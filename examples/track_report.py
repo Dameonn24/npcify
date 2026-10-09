@@ -1,7 +1,7 @@
 """Report how well tracking holds together over a video file.
 
     uv run python examples/track_report.py some_clip.mp4
-    uv run python examples/track_report.py some_clip.mp4 --max-age 30
+    uv run python examples/track_report.py some_clip.mp4 --max-age 90
 
 Runs detect + track on every frame (no window) and prints how many IDs were
 created, how long tracks lasted, and how often lost tracks were recovered.
@@ -28,7 +28,8 @@ def main() -> int:
     p.add_argument("video", help="path to a video file")
     p.add_argument("--det-threshold", type=float, default=0.6, help="high threshold")
     p.add_argument("--low-threshold", type=float, default=0.3)
-    p.add_argument("--max-age", type=int, default=15)
+    p.add_argument("--max-age", type=int, default=TrackerConfig.max_age)
+    p.add_argument("--recover-distance", type=float, default=TrackerConfig.recover_distance)
     p.add_argument("--det-width", type=int, default=640)
     p.add_argument("--detect-every", type=int, default=1)
     args = p.parse_args()
@@ -37,6 +38,7 @@ def main() -> int:
         high_threshold=args.det_threshold,
         low_threshold=min(args.low_threshold, args.det_threshold),
         max_age=args.max_age,
+        recover_distance=args.recover_distance,
     )
     tracker = Tracker(config)
     pipeline = Pipeline(
@@ -94,7 +96,7 @@ def main() -> int:
     if peak_confirmed and s.ids_confirmed > 2 * peak_confirmed:
         print(
             "\nNote: many more confirmed IDs than people on screen at once. Tracks may be "
-            "fragmenting; try a larger --max-age or a lower --low-threshold."
+            "fragmenting; try a larger --max-age or --recover-distance."
         )
     return 0
 

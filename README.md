@@ -26,7 +26,7 @@ uv run python examples/webcam_demo.py --video some_clip.mp4 # play a video file 
 uv run python examples/webcam_demo.py --help                # all options
 ```
 
-Options: `--camera N`, `--video PATH`, `--width W`, `--height H`, `--no-mirror`, `--no-overlay`, `--no-show-detections`, `--det-threshold T`, `--low-threshold T`, `--det-width W`, `--max-age N`, `--detect-every N`.
+Options: `--camera N`, `--video PATH`, `--width W`, `--height H`, `--no-mirror`, `--no-overlay`, `--no-show-detections`, `--det-threshold T`, `--low-threshold T`, `--det-width W`, `--max-age N`, `--recover-distance D`, `--detect-every N`.
 
 Each tracked face gets a stable ID and its own colour, with a short trail showing where it has been. Labels show the ID, state and confidence: *tentative* (just appeared), *confirmed*, or *lost* (dashed box; the detector missed it, so its position is predicted and the box grows). Thin grey boxes are the raw detections. The dots mark the eyes, nose and mouth corners.
 
@@ -34,8 +34,10 @@ Tuning:
 
 - Far-away faces missed: `--det-width 960` (slower, finds smaller faces).
 - Faces you can clearly see not picked up: lower `--det-threshold` (e.g. `0.5`).
-- IDs change when someone turns their head or is covered for a moment: raise `--max-age` (e.g. `30`, about 1 second) or lower `--low-threshold` (e.g. `0.2`).
-- Boxes linger in empty space after someone leaves: lower `--max-age`.
+- IDs change when someone is hidden for longer (default keeps a face for 2 s): raise `--max-age` (e.g. `90`, about 3 s).
+- IDs change when someone moves a lot while hidden (e.g. comes back from a spin further away): raise `--recover-distance` (e.g. `2.5`).
+- A different person who appears where someone vanished takes over their ID: lower `--recover-distance` (e.g. `1.0`).
+- Boxes linger in empty space after someone leaves (without walking out of frame): lower `--max-age`.
 
 ### Models
 
@@ -58,7 +60,7 @@ Prints the average detection time, the FPS that implies, and the average number 
 To check whether tracking holds together on a clip:
 
 ```bash
-uv run python examples/track_report.py some_clip.mp4 [--max-age 30]
+uv run python examples/track_report.py some_clip.mp4 [--max-age 90]
 ```
 
 It prints how many IDs were created, how long tracks lasted, and how often lost tracks were recovered. A clip with 3 people should give about 3 confirmed IDs.

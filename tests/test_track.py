@@ -162,3 +162,52 @@ def test_boxes_are_clipped_to_frame() -> None:
     for _ in range(5):
         [t] = tracker.update([face(10, 10, size=80)], FRAME)
     assert t.box.x == 0 and t.box.y == 0
+
+
+def confirmed_ids(tracker: Tracker, frames: list[list[Detection]]) -> set[int]:
+    ids: set[int] = set()
+    for dets in frames:
+        ids |= {t.track_id for t in tracker.update(dets, FRAME) if t.state is TrackState.CONFIRMED}
+    return ids
+
+
+def test_hands_over_face_keeps_id() -> None:
+    # Hands coming up push the box down and shrink it before the face vanishes for
+    # 1.5 s, then it reappears a little away from where it was predicted.
+    frames = [[face(640, 360, 180)] for _ in range(60)]
+    frames += [[face(640, 360 + 8 * k, 180 - 10 * k, conf=0.8)] for k in range(5)]
+    frames += [[] for _ in range(45)]
+    frames += [[face(625, 345, 170)] for _ in range(20)]
+    assert confirmed_ids(Tracker(), frames) == {1}
+
+
+def test_turning_away_and_back_keeps_id() -> None:
+    # Spinning on a chair: the face narrows and slides sideways, disappears for
+    # 1.5 s, then comes back narrow from the other side and widens again.
+    frames = [[face(640, 360, 180)] for _ in range(60)]
+    frames += [[face(640 + 12 * k, 360, 180 - 20 * k)] for k in range(6)]
+    frames += [[] for _ in range(45)]
+    frames += [[face(560 + 14 * k, 365, 80 + 18 * k)] for k in range(6)]
+    frames += [[face(645, 365, 180)] for _ in range(20)]
+    assert confirmed_ids(Tracker(), frames) == {1}
+
+
+def test_someone_else_far_away_does_not_inherit_a_lost_id() -> None:
+    tracker = Tracker()
+    for _ in range(10):
+        tracker.update([face(300, 360, 120)], FRAME)
+    tracker.update([], FRAME)
+    tracks = [tracker.update([face(1000, 360, 120)], FRAME) for _ in range(4)][-1]
+    states = {t.track_id: t.state for t in tracks}
+    assert states[1] is TrackState.LOST
+    assert states[2] is TrackState.CONFIRMED
+
+
+def test_lost_prediction_settles_instead_of_drifting() -> None:
+    tracker = Tracker()
+    for i in range(30):
+        tracker.update([face(400 + 6 * i, 360)], FRAME)
+    for _ in range(40):
+        [t] = tracker.update([], FRAME)
+    # Without decay it would have drifted ~240 px; it should settle within ~60 px.
+    assert abs(centre(t)[0] - (400 + 6 * 29)) < 80

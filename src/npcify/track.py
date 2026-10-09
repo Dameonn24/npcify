@@ -12,7 +12,11 @@ A small ByteTrack-style tracker:
   confirmed after `min_hits` matches in a row.
 - A confirmed track with no match becomes lost: its position keeps being
   predicted and its box grows (we're less sure where it is) for up to
-  `max_age` frames before it is removed.
+  `max_age` frames before it is removed. Its speed decays while lost, because
+  someone who is covered or turned away usually stays roughly where they were.
+- A lost track that no longer overlaps its face when the face reappears (e.g.
+  the person shifted while hidden) can still be recovered by a nearby
+  confident detection of similar size (see `recover_distance`).
 
 Safety: tentative and lost tracks are still real faces. Callers must cover
 every track this returns, plus every raw detection; confirmation is never a
@@ -22,6 +26,7 @@ reason to show a face.
 from __future__ import annotations
 
 import math
+from collections import deque
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -48,7 +53,18 @@ class TrackerConfig:
     low_match_iou: stricter overlap needed for a low-confidence rescue match.
     min_hits: consecutive matches needed to confirm a new track.
     max_age: frames a lost track is kept (and its position predicted) before
-        removal. 15 frames is about half a second at 30 FPS.
+        removal. 60 frames is about 2 seconds at 30 FPS: long enough to cover
+        your face with your hands or turn round on a chair.
+    lost_velocity_decay: a lost track's speed is multiplied by this each missed
+        frame, so its prediction settles near where the face was last seen
+        instead of drifting away. Not applied to faces last seen at the frame
+        edge, which are most likely leaving.
+    recover_distance: a lost track can reclaim a confident detection whose centre
+        is within this many face-widths of its predicted centre, if the sizes
+        are within `recover_size_ratio` of each other. Larger survives bigger
+        movements while hidden, but risks a different person who appears nearby
+        inheriting the ID.
+    recover_size_ratio: maximum size ratio (bigger / smaller) for that recovery.
     lost_growth: how much a lost track's box grows per missed frame (0.05 = 5%).
     max_lost_growth: cap on that growth, as a size multiplier (1.5 = 150%).
     position_noise: expected detector jitter as a fraction of face size. Higher
@@ -62,7 +78,10 @@ class TrackerConfig:
     match_iou: float = 0.2
     low_match_iou: float = 0.5
     min_hits: int = 3
-    max_age: int = 15
+    max_age: int = 60
+    lost_velocity_decay: float = 0.9
+    recover_distance: float = 1.5
+    recover_size_ratio: float = 2.5
     lost_growth: float = 0.05
     max_lost_growth: float = 1.5
     position_noise: float = 1 / 20
@@ -123,6 +142,27 @@ class _Record:
     frames_since_seen: int = 0
     age: int = 1
     landmarks: tuple[Point, ...] | None = field(default=None)
+    # Where the face was last actually seen, and its recent sizes (max of w, h).
+    # Used to recover lost tracks: a face that turns away shrinks before it
+    # disappears, so the recent maximum is a better guide to its real size.
+    last_centre: tuple[float, float] = (0.0, 0.0)
+    recent_sizes: deque[float] = field(default_factory=lambda: deque(maxlen=30))
+    at_edge: bool = False  # last seen touching the frame edge (probably leaving)
+
+    def saw(self, z: FloatArray, frame_size: tuple[int, int] | None) -> None:
+        self.last_centre = (float(z[0]), float(z[1]))
+        self.recent_sizes.append(float(max(z[2], z[3])))
+        if frame_size is not None:
+            margin = 2
+            self.at_edge = (
+                z[0] - z[2] / 2 <= margin
+                or z[1] - z[3] / 2 <= margin
+                or z[0] + z[2] / 2 >= frame_size[0] - margin
+                or z[1] + z[3] / 2 >= frame_size[1] - margin
+            )
+
+    def ref_size(self) -> float:
+        return max(self.recent_sizes, default=float(max(self.kf.x[2], self.kf.x[3])))
 
     def xyxy(self) -> FloatArray:
         """The (ungrown) predicted box as [x1, y1, x2, y2]."""
@@ -174,6 +214,40 @@ def _match(
     )
 
 
+def _match_lost_by_distance(
+    tracks: list[_Record], dets: list[Detection], max_dist: float, max_ratio: float
+) -> tuple[list[tuple[_Record, Detection]], list[_Record], list[Detection]]:
+    """Match lost tracks to detections by centre distance (in face-widths) and size.
+
+    Distance is measured to whichever is closer: the predicted centre, or where
+    the face was last seen (people who turn away usually come back there).
+    """
+    if not tracks or not dets:
+        return [], list(tracks), list(dets)
+    big = 1e6
+    cost = np.full((len(tracks), len(dets)), big)
+    for i, t in enumerate(tracks):
+        px, py = t.kf.x[:2]
+        lx, ly = t.last_centre
+        size = t.ref_size()
+        for j, d in enumerate(dets):
+            z = _box_to_z(d.box)
+            det_size = max(z[2], z[3])
+            dist = min(math.hypot(z[0] - px, z[1] - py), math.hypot(z[0] - lx, z[1] - ly)) / size
+            ratio = max(size, det_size) / max(1.0, min(size, det_size))
+            if dist <= max_dist and ratio <= max_ratio:
+                cost[i, j] = dist
+    rows, cols = linear_sum_assignment(cost)
+    matches = [(tracks[r], dets[c]) for r, c in zip(rows, cols, strict=True) if cost[r, c] < big]
+    matched_t = {id(t) for t, _ in matches}
+    matched_d = {id(d) for _, d in matches}
+    return (
+        matches,
+        [t for t in tracks if id(t) not in matched_t],
+        [d for d in dets if id(d) not in matched_d],
+    )
+
+
 class Tracker:
     """Keeps track IDs stable from frame to frame."""
 
@@ -199,13 +273,15 @@ class Tracker:
         for t in self._tracks:
             if t.state is TrackState.LOST:
                 t.kf.x[6:8] = 0.0  # don't let the size keep drifting while unseen
+                if not t.at_edge:
+                    t.kf.x[4:6] *= cfg.lost_velocity_decay
             t.kf.predict()
             t.age += 1
             t.frames_since_seen += 1
             t.landmarks = None
 
         if detections is not None:
-            self._associate(detections)
+            self._associate(detections, frame_size)
 
         for t in self._tracks:
             unseen = t.frames_since_seen > 0
@@ -222,7 +298,7 @@ class Tracker:
                 tracks.append(self._snapshot(t, box))
         return tracks
 
-    def _associate(self, detections: list[Detection]) -> None:
+    def _associate(self, detections: list[Detection], frame_size: tuple[int, int] | None) -> None:
         cfg = self.config
         high = [d for d in detections if d.confidence >= cfg.high_threshold]
         low = [d for d in detections if cfg.low_threshold <= d.confidence < cfg.high_threshold]
@@ -233,11 +309,18 @@ class Tracker:
         matches, unmatched, high_left = _match(active, high, cfg.match_iou)
         # 2. Low-confidence detections may only rescue established tracks.
         rescued, unmatched, _ = _match(unmatched, low, cfg.low_match_iou)
-        # 3. Tentative tracks vs remaining high-confidence detections.
+        # 3. Lost tracks whose prediction no longer overlaps the face: nearby,
+        #    similar-sized confident detections. Runs before new tracks can start.
+        lost = [t for t in unmatched if t.state is TrackState.LOST]
+        recovered, _, high_left = _match_lost_by_distance(
+            lost, high_left, cfg.recover_distance, cfg.recover_size_ratio
+        )
+        unmatched = [t for t in unmatched if all(t is not r for r, _ in recovered)]
+        # 4. Tentative tracks vs remaining high-confidence detections.
         tent_matches, tent_unmatched, high_left = _match(tentative, high_left, cfg.match_iou)
 
-        for t, d in matches + rescued + tent_matches:
-            self._hit(t, d)
+        for t, d in matches + rescued + recovered + tent_matches:
+            self._hit(t, d, frame_size)
         for t in tent_unmatched:
             t.state = TrackState.REMOVED  # a tentative track must be seen every frame
         for t in unmatched:
@@ -245,10 +328,18 @@ class Tracker:
                 t.state = TrackState.LOST
                 self.stats.lost_events += 1
         for d in high_left:
-            self._start(d)
+            self._start(d, frame_size)
 
-    def _hit(self, t: _Record, d: Detection) -> None:
-        t.kf.update(_box_to_z(d.box))
+    def _hit(self, t: _Record, d: Detection, frame_size: tuple[int, int] | None) -> None:
+        t.saw(_box_to_z(d.box), frame_size)
+        if t.state is TrackState.LOST:
+            # Restart the motion estimate: the face may have moved while hidden, and
+            # treating that jump as one frame of movement would make the box overshoot.
+            t.kf = _KalmanBox(
+                _box_to_z(d.box), self.config.position_noise, self.config.velocity_noise
+            )
+        else:
+            t.kf.update(_box_to_z(d.box))
         t.hits += 1
         t.frames_since_seen = 0
         t.confidence = d.confidence
@@ -260,10 +351,11 @@ class Tracker:
             t.state = TrackState.CONFIRMED
             self.stats.ids_confirmed += 1
 
-    def _start(self, d: Detection) -> None:
+    def _start(self, d: Detection, frame_size: tuple[int, int] | None) -> None:
         cfg = self.config
         kf = _KalmanBox(_box_to_z(d.box), cfg.position_noise, cfg.velocity_noise)
         t = _Record(self._next_id, kf, TrackState.TENTATIVE, d.confidence, landmarks=d.landmarks)
+        t.saw(_box_to_z(d.box), frame_size)
         self._next_id += 1
         self.stats.ids_created += 1
         if cfg.min_hits <= 1:

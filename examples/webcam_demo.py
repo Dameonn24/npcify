@@ -52,8 +52,15 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--max-age",
         type=int,
-        default=15,
-        help="frames to keep predicting a face the detector lost (default: 15)",
+        default=TrackerConfig.max_age,
+        help=f"frames to keep a face the detector lost (default: {TrackerConfig.max_age}, ~2 s)",
+    )
+    p.add_argument(
+        "--recover-distance",
+        type=float,
+        default=TrackerConfig.recover_distance,
+        help="how far (in face-widths) a lost face may reappear and keep its ID "
+        f"(default: {TrackerConfig.recover_distance})",
     )
     p.add_argument(
         "--detect-every",
@@ -90,6 +97,7 @@ def main() -> int:
         high_threshold=args.det_threshold,
         low_threshold=min(args.low_threshold, args.det_threshold),
         max_age=args.max_age,
+        recover_distance=args.recover_distance,
     )
     try:
         # The detector runs at the low threshold so weak detections reach the tracker.
