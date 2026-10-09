@@ -130,6 +130,15 @@ class AvatarExpression:
     look_y: float = 0.0
 
 
+@dataclass(frozen=True)
+class HeadPose:
+    """Head angles in degrees, in image terms (see FaceState)."""
+
+    yaw: float = 0.0
+    pitch: float = 0.0
+    roll: float = 0.0
+
+
 @dataclass
 class FaceState:
     """Head pose and expression for one hidden (bystander) face.

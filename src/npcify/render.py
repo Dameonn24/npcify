@@ -1,4 +1,4 @@
-"""Hide faces: anonymise regions now, draw cartoon avatars later (step 8).
+"""Hide faces: anonymise every region, then draw cartoon avatars on top.
 
 The Anonymizer covers each face with a padded, soft-edged ellipse. The core of
 the ellipse is fully opaque and always contains the whole face box; feathering
@@ -9,13 +9,27 @@ into the output. Only the face regions are processed, not the whole frame.
 from __future__ import annotations
 
 import math
+import secrets
+import time
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any, Protocol
 
 import cv2
 import numpy as np
 from numpy.typing import NDArray
 
-from npcify.types import BoundingBox, FaceState, Frame, Track
+from npcify.avatar import look_seed
+from npcify.smoothing import OneEuroFilter
+from npcify.types import (
+    AvatarExpression,
+    BoundingBox,
+    FaceState,
+    Frame,
+    HeadPose,
+    Track,
+    TrackState,
+)
 
 STYLES = ("pixelate-blur", "pixelate", "blur", "solid")
 
@@ -191,6 +205,159 @@ class Anonymizer:
         return mosaic.astype(np.float32)
 
 
-def draw_avatars(frame: Frame, tracks: list[Track], states: list[FaceState]) -> Frame:
-    """Return a copy of the frame with avatars drawn over the given faces (step 8)."""
-    raise NotImplementedError
+class AvatarRenderer(Protocol):
+    """A drawable avatar style. Other styles (3D heads, avatar packs) implement this.
+
+    identity(seed): a random look for one person (same seed, same look).
+    render(identity, pose, expression, size): a size x size BGRA image with
+        PREMULTIPLIED alpha (colour channels already multiplied by alpha).
+    cover_centre / cover_radius: a circle, as fractions of `size`, inside which
+        the rendered image is fully opaque for every pose and expression. The
+        compositor scales the avatar so this circle contains the face box, so
+        a style that breaks this promise could leave part of a face showing
+        (the anonymisation underneath still hides it).
+    """
+
+    name: str
+    cover_centre: tuple[float, float]
+    cover_radius: float
+
+    def identity(self, seed: int) -> Any: ...
+
+    def render(
+        self, identity: Any, pose: HeadPose, expression: AvatarExpression, size: int
+    ) -> NDArray[np.uint8]: ...
+
+
+@dataclass
+class _AvatarTrack:
+    identity: Any
+    placement: OneEuroFilter
+    fade: float = 0.0
+
+
+class AvatarLayer:
+    """Draws avatars over faces that have already been anonymised.
+
+    Who gets an avatar: confirmed hidden tracks with a FaceState from the
+    landmarker, or a coarse FaceState for faces at least `min_coarse_width`
+    wide (drawn with a neutral expression). Everyone else - tentative and lost
+    tracks, raw detections, tracks without a FaceState - keeps just the blur.
+
+    An avatar fades in over `fade_frames` frames once a track qualifies and
+    vanishes instantly when it stops qualifying. Both are safe, because the
+    blur is always underneath.
+
+    Size and position are smoothed, but the radius is then forced back up if
+    needed so that the avatar's opaque circle always contains the face box.
+    """
+
+    def __init__(
+        self,
+        renderer: AvatarRenderer,
+        session_seed: int | None = None,
+        fade_frames: int = 5,
+        min_coarse_width: int = 40,
+        render_size: int = 256,
+    ) -> None:
+        self.renderer = renderer
+        self.session_seed = secrets.randbits(32) if session_seed is None else session_seed
+        self.fade_frames = fade_frames
+        self.min_coarse_width = min_coarse_width
+        self.render_size = render_size
+        self._tracks: dict[int, _AvatarTrack] = {}
+
+    def reroll(self, session_seed: int | None = None) -> None:
+        """Give everyone a new random look."""
+        self.session_seed = secrets.randbits(32) if session_seed is None else session_seed
+        self._tracks = {}
+
+    def qualifies(self, track: Track, face: FaceState | None) -> bool:
+        if face is None or track.state is not TrackState.CONFIRMED:
+            return False
+        if face.source == "landmarker":
+            return True
+        return face.source == "coarse" and track.box.width >= self.min_coarse_width
+
+    def apply(
+        self,
+        frame: Frame,
+        tracks: list[Track],
+        faces: Mapping[int, FaceState],
+        now: float | None = None,
+        advance: bool = True,
+    ) -> Frame:
+        """Return a copy of an already-anonymised frame with avatars drawn on top.
+
+        `faces` must only contain hidden tracks (kept people never get one).
+        With advance=False (e.g. re-drawing a paused frame) fades don't move on.
+        """
+        now = time.perf_counter() if now is None else now
+        out = frame.copy()
+        live = {t.track_id for t in tracks}
+        self._tracks = {k: v for k, v in self._tracks.items() if k in live}
+        for t in tracks:
+            face = faces.get(t.track_id)
+            if not self.qualifies(t, face):
+                self._tracks.pop(t.track_id, None)  # back to blur instantly
+                continue
+            assert face is not None
+            at = self._tracks.get(t.track_id)
+            if at is None:
+                seed = look_seed(t.track_id, self.session_seed)
+                at = _AvatarTrack(self.renderer.identity(seed), OneEuroFilter(1.5, 0.02))
+                self._tracks[t.track_id] = at
+            if advance:
+                at.fade = min(1.0, at.fade + 1.0 / max(1, self.fade_frames))
+            if at.fade <= 0:
+                continue
+            expression = face.avatar if face.source == "landmarker" else AvatarExpression()
+            pose = HeadPose(face.yaw, face.pitch, face.roll)
+            cx, cy, radius = self._placement(at, t.box, now, advance)
+            self._draw(out, at, pose, expression, cx, cy, radius)
+        return out
+
+    def _placement(
+        self, at: _AvatarTrack, box: BoundingBox, now: float, advance: bool
+    ) -> tuple[float, float, float]:
+        bx, by = box.x + box.width / 2, box.y + box.height / 2
+        needed = math.hypot(box.width, box.height) / 2
+        if advance:
+            cx, cy, r = at.placement([bx, by, needed], now)
+        else:
+            cx, cy, r = bx, by, needed
+        # Never smaller than what covers the actual box from the smoothed centre.
+        corners = max(
+            math.hypot(x - cx, y - cy)
+            for x in (box.x, box.x + box.width)
+            for y in (box.y, box.y + box.height)
+        )
+        return float(cx), float(cy), max(float(r), corners) + 2.0
+
+    def _draw(
+        self,
+        out: Frame,
+        at: _AvatarTrack,
+        pose: HeadPose,
+        expression: AvatarExpression,
+        cx: float,
+        cy: float,
+        radius: float,
+    ) -> None:
+        r = self.renderer
+        size = max(8, round(radius / r.cover_radius))
+        rgba = r.render(at.identity, pose, expression, self.render_size)
+        interp = cv2.INTER_AREA if size < self.render_size else cv2.INTER_LINEAR
+        rgba = cv2.resize(rgba, (size, size), interpolation=interp)
+        x0 = round(cx - r.cover_centre[0] * size)
+        y0 = round(cy - r.cover_centre[1] * size)
+        h, w = out.shape[:2]
+        fx1, fy1, fx2, fy2 = max(0, x0), max(0, y0), min(w, x0 + size), min(h, y0 + size)
+        if fx2 <= fx1 or fy2 <= fy1:
+            return
+        patch = rgba[fy1 - y0 : fy2 - y0, fx1 - x0 : fx2 - x0].astype(np.float32) * at.fade
+        alpha = patch[:, :, 3:4] / 255.0
+        roi = out[fy1:fy2, fx1:fx2].astype(np.float32)
+        out[fy1:fy2, fx1:fx2] = np.clip(patch[:, :, :3] + roi * (1.0 - alpha), 0, 255).astype(
+            np.uint8
+        )
