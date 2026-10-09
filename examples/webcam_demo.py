@@ -1,9 +1,16 @@
-"""Live webcam (or video file) preview through the npcify pipeline, with an FPS overlay.
+"""Live webcam (or video file) through the npcify pipeline: every face is hidden.
 
     uv run python examples/webcam_demo.py
     uv run python examples/webcam_demo.py --video some_clip.mp4
 
-Press q or Esc to quit.
+Keys:
+    q / Esc   quit
+    d         toggle debug boxes and track IDs
+    s         cycle anonymisation style
+    space     pause / resume
+    n         when paused, step forward one frame (to check for leaks)
+
+There is deliberately no key to turn anonymisation off.
 """
 
 from __future__ import annotations
@@ -15,12 +22,15 @@ import time
 from npcify import Pipeline
 from npcify.capture import CameraError, FrameSource
 from npcify.debug import TrackTrails, draw_tracks
-from npcify.detect import YuNetDetector
+from npcify.detect import DEFAULT_DET_WIDTH, YuNetDetector
 from npcify.models import ModelDownloadError
 from npcify.output import PreviewWindow, format_overlay_lines
+from npcify.render import STYLES, Anonymizer, Padding
 from npcify.timing import FPSCounter, StageTimer
 from npcify.track import Tracker, TrackerConfig
 from npcify.types import TrackState
+
+_DEFAULT_PADDING = Padding()
 
 
 def parse_args() -> argparse.Namespace:
@@ -32,10 +42,22 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--no-mirror", action="store_true", help="don't flip the webcam image")
     p.add_argument("--no-overlay", action="store_true", help="hide the FPS overlay")
     p.add_argument(
-        "--show-detections",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="draw tracked faces with IDs, trails and landmarks (default: on)",
+        "--style",
+        choices=STYLES,
+        default=STYLES[0],
+        help=f"how faces are hidden (default: {STYLES[0]})",
+    )
+    p.add_argument(
+        "--padding",
+        type=float,
+        nargs=2,
+        metavar=("W", "H"),
+        default=(_DEFAULT_PADDING.width, _DEFAULT_PADDING.height),
+        help="extra width and height around each face, as fractions "
+        f"(default: {_DEFAULT_PADDING.width} {_DEFAULT_PADDING.height})",
+    )
+    p.add_argument(
+        "--debug", action="store_true", help="start with debug boxes and IDs shown (key: d)"
     )
     p.add_argument(
         "--det-threshold",
@@ -47,13 +69,13 @@ def parse_args() -> argparse.Namespace:
         "--low-threshold",
         type=float,
         default=0.3,
-        help="lower confidence that can keep an existing track alive (default: 0.3)",
+        help="lowest confidence that is still covered and keeps a track alive (default: 0.3)",
     )
     p.add_argument(
         "--max-age",
         type=int,
         default=TrackerConfig.max_age,
-        help=f"frames to keep a face the detector lost (default: {TrackerConfig.max_age}, ~3 s at 30 FPS)",
+        help=f"frames to keep covering a face the detector lost (default: {TrackerConfig.max_age})",
     )
     p.add_argument(
         "--recover-distance",
@@ -66,13 +88,20 @@ def parse_args() -> argparse.Namespace:
         "--detect-every",
         type=int,
         default=1,
-        help="run detection every N frames; the tracker predicts in between (default: 1)",
+        help="run detection every N frames (default: 1). N > 1 can leave new faces "
+        "uncovered for up to N-1 frames; for benchmarking only",
     )
     p.add_argument(
         "--det-width",
         type=int,
-        default=640,
-        help="width detection runs at; larger finds smaller faces but is slower (default: 640)",
+        default=DEFAULT_DET_WIDTH,
+        help="width detection runs at; larger finds smaller faces but is slower "
+        f"(default: {DEFAULT_DET_WIDTH})",
+    )
+    p.add_argument(
+        "--debug-no-anonymise",
+        action="store_true",
+        help="DEVELOPMENT ONLY: show faces unhidden. Never stream or record with this.",
     )
     return p.parse_args()
 
@@ -82,7 +111,7 @@ def track_summary(pipeline: Pipeline) -> list[str]:
         return sum(t.state is state for t in pipeline.tracks)
 
     return [
-        f"faces: {len(pipeline.detections)}  tracks: {len(pipeline.tracks)}",
+        f"faces: {len(pipeline.detections)}  covered: {len(pipeline.regions)}",
         f"  {count(TrackState.CONFIRMED)} confirmed, {count(TrackState.TENTATIVE)} tentative, "
         f"{count(TrackState.LOST)} lost",
     ]
@@ -93,6 +122,20 @@ def main() -> int:
     source_arg = args.video if args.video else args.camera
     mirror = False if args.no_mirror else None  # None = default for the source type
 
+    if args.debug_no_anonymise:
+        banner = "!" * 72
+        print(
+            f"\n{banner}\n  ANONYMISATION IS OFF (--debug-no-anonymise).\n"
+            f"  Faces are VISIBLE. Do not stream, share or record this window.\n{banner}\n",
+            file=sys.stderr,
+        )
+    if args.detect_every > 1:
+        print(
+            f"Warning: --detect-every {args.detect_every}: a face that appears between "
+            "detection frames is not covered until the next one.",
+            file=sys.stderr,
+        )
+
     config = TrackerConfig(
         high_threshold=args.det_threshold,
         low_threshold=min(args.low_threshold, args.det_threshold),
@@ -100,7 +143,7 @@ def main() -> int:
         recover_distance=args.recover_distance,
     )
     try:
-        # The detector runs at the low threshold so weak detections reach the tracker.
+        # The detector runs at the low threshold so weak detections are covered too.
         detector = YuNetDetector(score_threshold=config.low_threshold, det_width=args.det_width)
     except ModelDownloadError as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -112,13 +155,17 @@ def main() -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
+    padding = Padding(args.padding[0], args.padding[1], _DEFAULT_PADDING.shift_up)
+    style = args.style
     fps = FPSCounter()
     timer = StageTimer()
     pipeline = Pipeline(
         detector=detector,
         tracker=Tracker(config),
+        anonymizer=Anonymizer(style=style, padding=padding),
         timer=timer,
         detect_every=max(1, args.detect_every),
+        debug_no_anonymise=args.debug_no_anonymise,
     )
     trails = TrackTrails()
     window: PreviewWindow | None = None
@@ -128,40 +175,67 @@ def main() -> int:
         print(f"Requested {args.width}x{args.height}, camera gave {w}x{h}.")
     else:
         print(f"Resolution: {w}x{h}")
+    print("Keys: q quit, d debug boxes, s style, space pause, n next frame (when paused)")
 
     # Play video files at their native speed rather than as fast as possible.
     frame_period = 1.0 / source.source_fps if not source.is_camera and source.source_fps else 0.0
     next_frame_at = time.perf_counter()
 
+    show_debug = args.debug
+    paused = False
+    step = False
+    raw = None  # the latest input frame (kept so a style change can re-render when paused)
+    output = None
+
     try:
         window = PreviewWindow()
         while True:
-            with timer.stage("capture"):
-                frame = source.read()
-            if frame is None:
-                if source.is_camera:
-                    print("Camera stopped delivering frames.", file=sys.stderr)
-                break
-
-            with timer.stage("process"):
-                frame = pipeline.process_frame(frame)
+            if not paused or step:
+                step = False
+                with timer.stage("capture"):
+                    raw = source.read()
+                if raw is None:
+                    if source.is_camera:
+                        print("Camera stopped delivering frames.", file=sys.stderr)
+                    break
+                with timer.stage("process"):
+                    output = pipeline.process_frame(raw)
+                trails.update(pipeline.tracks)
+                fps.tick()
 
             with timer.stage("display"):
-                if args.show_detections:
-                    trails.update(pipeline.tracks)
-                    frame = draw_tracks(frame, pipeline.tracks, trails, pipeline.detections)
+                shown = output
+                if show_debug:
+                    shown = draw_tracks(shown, pipeline.tracks, trails, pipeline.detections)
                 lines = None
                 if not args.no_overlay:
-                    res = (frame.shape[1], frame.shape[0])
+                    res = (shown.shape[1], shown.shape[0])
+                    extra = [*track_summary(pipeline), f"style: {style}  (s to change)"]
+                    if paused:
+                        extra.append("PAUSED  (space resume, n next frame)")
+                    if args.debug_no_anonymise:
+                        extra.append("!! ANONYMISATION OFF !!")
                     lines = format_overlay_lines(
-                        fps.fps, fps.frame_ms, res, timer.averages(), track_summary(pipeline)
+                        fps.fps, fps.frame_ms, res, timer.averages(), extra
                     )
-                quit_requested = window.show(frame, lines)
-            fps.tick()
-            if quit_requested:
-                break
+                key = window.show(shown, lines, wait_ms=30 if paused else 1)
 
-            if frame_period:
+            if key == "quit":
+                break
+            if key == "d":
+                show_debug = not show_debug
+            elif key == "s":
+                style = STYLES[(STYLES.index(style) + 1) % len(STYLES)]
+                pipeline.anonymizer = Anonymizer(style=style, padding=padding)
+                if paused and raw is not None:
+                    output = pipeline.anonymise(raw)
+            elif key == " ":
+                paused = not paused
+                next_frame_at = time.perf_counter()
+            elif key == "n" and paused:
+                step = True
+
+            if frame_period and not paused:
                 next_frame_at += frame_period
                 delay = next_frame_at - time.perf_counter()
                 if delay > 0:

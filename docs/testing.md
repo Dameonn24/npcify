@@ -14,7 +14,7 @@ Watch the boxes, the confidence scores, the `faces:` count and the `detect` time
 |---|----------|-------------|------------------------|
 | 1 | One face, close up | Sit 40–80 cm from the laptop, facing the camera. | Box on your face every frame, score 0.85+, 5 dots on eyes, nose and mouth corners. Overall FPS 25+. |
 | 2 | Several people | 2–4 people in frame at once, at different distances. | `faces:` matches the number of people. No duplicate boxes on one face. FPS stays 25+. |
-| 3 | Someone 3–5 m away | One person stands at the far side of the room. | Detected most of the time at 3 m. At 4–5 m some flicker is expected at the default `--det-width 640`; try `--det-width 960`, which should hold them more steadily. |
+| 3 | Someone 3–5 m away | One person stands at the far side of the room. | Detected most of the time at 3 m. At 4–5 m some flicker is possible at the default `--det-width 960`; try `--det-width 1280` (slower), which should hold them more steadily. |
 | 4 | Side profile | Turn your head slowly from facing the camera to a full side-on view. | Detected up to roughly 45–60°. Full profile (90°) may drop out; note the angle where it does. |
 | 5 | Partly covered face | Hand over the mouth, a mug, a face mask, sunglasses, hair over one eye. | Still detected with any one of those, perhaps at a lower score (0.6–0.8). Hand covering most of the face may drop out; that's acceptable for now. |
 | 6 | Low light | Turn off the main lights and use one lamp or the screen glow. | Still detected, maybe at a lower score. FPS may drop to 15–25 because macOS lengthens the camera exposure; that's the camera, not npcify (check that `detect` stays a few ms). |
@@ -39,6 +39,22 @@ Watch the `#N` label on each face and the confirmed / tentative / lost counts in
 | 6 | False positives | Point the camera at a busy scene with no people. | Any brief false box stays *tentative* and vanishes; never *confirmed*. |
 
 For a recorded clip, `uv run python examples/track_report.py clip.mp4` should show about one confirmed ID per person.
+
+## Hiding faces (step 5)
+
+Run `uv run python examples/webcam_demo.py`. Use **space** to pause and **n** to step one frame at a time through each scenario. Every face must be covered in **every** frame. One visible frame is a failure.
+
+| # | Scenario | How to test | Good enough looks like |
+|---|----------|-------------|------------------------|
+| 1 | Still | Sit still facing the camera. | Face, hair line, ears and chin all inside the mosaic. Background untouched. |
+| 2 | Quick head turns | Turn left/right quickly, look down and up. | Covered in every frame, including mid-turn and full profile. |
+| 3 | Hand waves | Wave a hand across your face quickly, several times. | No frame where any part of your eyes/nose/mouth is visible. |
+| 4 | Walk in / out | Walk in from the side of the frame and out again. | Covered from the first frame your face is visible (partly visible at the edge counts). |
+| 5 | Far away | Stand 3–5 m back. | Covered. If not, note the distance: that's a detector miss (try `--det-width 1280`). |
+| 6 | Several people | 2–3 people, moving, crossing. | Everyone covered every frame. |
+| 7 | Styles | Press **s** to cycle; also try `--style solid`. | Each style hides the face. FPS stays 25+. |
+
+Press **d** to see why something is covered: lost tracks (dashed) should still sit over the face. A frame where a face shows is a bug: note what was happening, and if you can, record a clip and run `examples/leak_check.py` on it.
 
 ## Record results
 

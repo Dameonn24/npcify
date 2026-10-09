@@ -88,6 +88,20 @@ class Decision:
     keep_real: bool
 
 
+@dataclass(frozen=True)
+class CoverRegion:
+    """A face area that must be hidden this frame.
+
+    `box` is the face box (padding is added by the anonymiser). `track_id` is
+    None for a raw detection that no track accounts for. `reason` says why it
+    is covered (e.g. "track:lost", "detection"), for debugging and leak checks.
+    """
+
+    box: BoundingBox
+    track_id: int | None
+    reason: str
+
+
 @dataclass
 class FaceState:
     """Head angles (degrees) and expression values for one tracked face.

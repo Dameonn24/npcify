@@ -10,6 +10,16 @@ npcify is an open-source Python library that takes a live camera feed or a video
 2. **Fail safe.** If the system is unsure about a face (low detection confidence, lost track, unknown identity, avatar can't be rendered), it must blur it. A real bystander face must never slip through. When in doubt, hide it.
 3. **Cover every track and every detection.** Tentative and lost tracks are still real faces. Any step that hides faces must cover every non-removed track (using its box, which for lost tracks is a predicted, enlarged box) *and* every raw detection, not just confirmed tracks. Confirmation only matters for things like stable avatar assignment, never for deciding whether to hide someone.
 
+4. **Covering happens in the same frame.** Detect, track, decide and anonymise all run inside `Pipeline.process_frame` before the frame is returned. No frame is ever shown before its faces are covered. `detect_every > 1` breaks this for brand-new faces and is for benchmarking only.
+5. **No off switch in user-facing tools.** There is no key or casual option to disable hiding. The only bypass is the loudly named `debug_no_anonymise` / `--debug-no-anonymise`, which prints a warning.
+
+## Hiding faces (how it works)
+
+- `decide.py`: a `CoveragePolicy` gives each track a `Decision`; `HideEveryone` is the default. `regions_to_cover` hides every track without an explicit `keep_real=True`, and every raw detection unless it is already inside a hidden track's box or clearly belongs to a kept track. Step 6 should only add a new policy.
+- `render.py`: `Anonymizer` pads each face box, covers it with an ellipse whose fully-opaque core always contains the whole face box, and feathers only outside that core.
+- Lost tracks are covered with a grown box spanning both the slowing prediction and a constant-velocity "kept moving" prediction.
+- Leak checks: `examples/leak_check.py` (uncovered detections must be 0).
+
 ## Known limitations (by design)
 
 - A person who leaves and comes back much later (after `max_age` frames, ~3 s) gets a new track ID. Recognising returning people is step 6 (keep list with faceprints).
@@ -46,7 +56,7 @@ uv run ruff format .      # format
 2. Webcam in/out with FPS counter ✅
 3. Face detection ✅
 4. Tracking ✅
-5. Blur everyone
+5. Blur everyone ✅
 6. Keep list with faceprints
 7. Pose and expressions
 8. 2D avatars

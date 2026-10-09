@@ -23,7 +23,31 @@ def test_process_frame_stores_detections_and_timing() -> None:
     pipeline.process_frame(np.zeros((480, 640, 3), dtype=np.uint8))
     assert pipeline.detections == [FAKE]
     assert len(pipeline.tracks) == 1
-    assert {"detect", "track"} <= set(pipeline.timer.averages())
+    assert {"detect", "track", "anonymise"} <= set(pipeline.timer.averages())
+
+
+def test_process_frame_hides_faces_without_touching_input() -> None:
+    frame = np.random.default_rng(0).integers(0, 256, (480, 640, 3), dtype=np.uint8)
+    before = frame.copy()
+    out = Pipeline(detector=FakeDetector()).process_frame(frame)
+    assert (frame == before).all()
+    assert (out[10:60, 10:60] != frame[10:60, 10:60]).any(axis=2).mean() > 0.95
+    assert (out[200:, 200:] == frame[200:, 200:]).all()
+
+
+def test_new_face_is_covered_on_its_very_first_frame() -> None:
+    frame = np.random.default_rng(1).integers(0, 256, (480, 640, 3), dtype=np.uint8)
+    pipeline = Pipeline(detector=FakeDetector())
+    out = pipeline.process_frame(frame)
+    assert pipeline.tracks[0].state.value == "tentative"
+    assert (out[10:60, 10:60] != frame[10:60, 10:60]).any(axis=2).all()
+
+
+def test_debug_no_anonymise_returns_faces_visible(capsys) -> None:
+    frame = np.random.default_rng(2).integers(0, 256, (480, 640, 3), dtype=np.uint8)
+    out = Pipeline(detector=FakeDetector(), debug_no_anonymise=True).process_frame(frame)
+    assert (out == frame).all()
+    assert "WARNING" in capsys.readouterr().err
 
 
 class CountingDetector(FakeDetector):

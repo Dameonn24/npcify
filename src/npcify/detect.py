@@ -21,6 +21,11 @@ from numpy.typing import NDArray
 from npcify.models import ensure_model
 from npcify.types import BoundingBox, Detection, Frame
 
+# Width detection runs at by default. 960 rather than 640: it finds faces about
+# a third smaller (further away, or narrow side-on views), which matters more
+# for hiding faces than the ~4 ms it costs. See examples/leak_check.py.
+DEFAULT_DET_WIDTH = 960
+
 
 class FaceDetector(Protocol):
     """Anything that can find faces in a BGR frame."""
@@ -88,7 +93,7 @@ class YuNetDetector:
         score_threshold: float = 0.6,
         nms_threshold: float = 0.3,
         max_faces: int = 5000,
-        det_width: int = 640,
+        det_width: int = DEFAULT_DET_WIDTH,
         model_path: str | Path | None = None,
     ) -> None:
         self.det_width = det_width

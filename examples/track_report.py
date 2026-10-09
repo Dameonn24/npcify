@@ -17,7 +17,7 @@ import sys
 from collections import defaultdict
 
 from npcify.capture import FrameSource
-from npcify.detect import YuNetDetector
+from npcify.detect import DEFAULT_DET_WIDTH, YuNetDetector
 from npcify.pipeline import Pipeline
 from npcify.track import Tracker, TrackerConfig
 from npcify.types import TrackState
@@ -30,7 +30,7 @@ def main() -> int:
     p.add_argument("--low-threshold", type=float, default=0.3)
     p.add_argument("--max-age", type=int, default=TrackerConfig.max_age)
     p.add_argument("--recover-distance", type=float, default=TrackerConfig.recover_distance)
-    p.add_argument("--det-width", type=int, default=640)
+    p.add_argument("--det-width", type=int, default=DEFAULT_DET_WIDTH)
     p.add_argument("--detect-every", type=int, default=1)
     args = p.parse_args()
 

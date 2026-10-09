@@ -208,6 +208,20 @@ def test_lost_prediction_settles_instead_of_drifting() -> None:
     for i in range(30):
         tracker.update([face(400 + 6 * i, 360)], FRAME)
     for _ in range(40):
+        tracker.update([], FRAME)
+    # The prediction used for matching settles (without decay it would drift ~240 px).
+    [record] = tracker._tracks
+    assert abs(record.kf.x[0] - (400 + 6 * 29)) < 80
+
+
+def test_lost_box_also_covers_a_face_that_kept_moving() -> None:
+    # Someone walks past side-on: the detector loses them but they keep moving.
+    tracker = Tracker()
+    for i in range(30):
+        tracker.update([face(300 + 5 * i, 360, 80)], FRAME)
+    for n in range(1, 41):
         [t] = tracker.update([], FRAME)
-    # Without decay it would have drifted ~240 px; it should settle within ~60 px.
-    assert abs(centre(t)[0] - (400 + 6 * 29)) < 80
+        x = 300 + 5 * (29 + n)  # where the face really is
+        assert t.box.x <= x - 40 and t.box.x + t.box.width >= x + 40, f"uncovered after {n}"
+        # ...while still covering where it was last seen, in case it stopped.
+        assert t.box.x <= 300 + 5 * 29

@@ -15,14 +15,14 @@ import sys
 import time
 
 from npcify.capture import FrameSource
-from npcify.detect import YuNetDetector
+from npcify.detect import DEFAULT_DET_WIDTH, YuNetDetector
 
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     p.add_argument("video", help="path to a video file")
     p.add_argument("--det-threshold", type=float, default=0.6)
-    p.add_argument("--det-width", type=int, default=640)
+    p.add_argument("--det-width", type=int, default=DEFAULT_DET_WIDTH)
     p.add_argument("--warmup", type=int, default=5, help="frames to run before timing")
     p.add_argument("--max-frames", type=int, default=0, help="stop after N frames (0 = all)")
     args = p.parse_args()

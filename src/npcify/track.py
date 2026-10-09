@@ -14,6 +14,9 @@ A small ByteTrack-style tracker:
   predicted and its box grows (we're less sure where it is) for up to
   `max_age` frames before it is removed. Its speed decays while lost, because
   someone who is covered or turned away usually stays roughly where they were.
+- While lost, the box handed out for covering spans both the slowing
+  prediction and where the face would be had it kept its speed, since a
+  face can keep moving while undetected (e.g. walking past side-on).
 - A lost track that no longer overlaps its face when the face reappears (e.g.
   the person shifted while hidden) can still be recovered by a nearby
   confident detection of similar size (see `recover_distance`).
@@ -148,6 +151,10 @@ class _Record:
     last_centre: tuple[float, float] = (0.0, 0.0)
     recent_sizes: deque[float] = field(default_factory=lambda: deque(maxlen=30))
     at_edge: bool = False  # last seen touching the frame edge (probably leaving)
+    # While lost: where the face would be if it kept moving at the speed it had
+    # when it was lost. The covered box spans this and the (slowing) prediction.
+    coast_centre: FloatArray | None = None
+    coast_velocity: FloatArray | None = None
 
     def saw(self, z: FloatArray, frame_size: tuple[int, int] | None) -> None:
         self.last_centre = (float(z[0]), float(z[1]))
@@ -276,6 +283,8 @@ class Tracker:
                 if not t.at_edge:
                     t.kf.x[4:6] *= cfg.lost_velocity_decay
             t.kf.predict()
+            if t.coast_centre is not None and t.coast_velocity is not None:
+                t.coast_centre = t.coast_centre + t.coast_velocity
             t.age += 1
             t.frames_since_seen += 1
             t.landmarks = None
@@ -326,6 +335,8 @@ class Tracker:
         for t in unmatched:
             if t.state is TrackState.CONFIRMED:
                 t.state = TrackState.LOST
+                t.coast_centre = t.kf.x[:2].copy()
+                t.coast_velocity = t.kf.x[4:6].copy()
                 self.stats.lost_events += 1
         for d in high_left:
             self._start(d, frame_size)
@@ -346,6 +357,7 @@ class Tracker:
         t.landmarks = d.landmarks
         if t.state is TrackState.LOST:
             t.state = TrackState.CONFIRMED
+            t.coast_centre = t.coast_velocity = None
             self.stats.recovered += 1
         elif t.state is TrackState.TENTATIVE and t.hits >= self.config.min_hits:
             t.state = TrackState.CONFIRMED
@@ -364,14 +376,28 @@ class Tracker:
         self._tracks.append(t)
 
     def _box(self, t: _Record, frame_size: tuple[int, int] | None) -> BoundingBox | None:
-        """Output box: grown while lost, rounded outwards, clipped. None if empty."""
+        """Output box: rounded outwards, clipped. None if empty.
+
+        While lost, the box is grown, and spans both where the slowing prediction
+        says the face is and where it would be had it kept moving at full speed.
+        We can't tell whether a hidden person stopped or carried on (e.g. walking
+        past side-on, undetected), so the covered area allows for both.
+        """
         cx, cy, w, h = t.kf.x[:4]
+        x1, y1, x2, y2 = cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2
         if t.state is TrackState.LOST:
             cfg = self.config
             scale = min(1.0 + cfg.lost_growth * t.frames_since_seen, cfg.max_lost_growth)
             w, h = w * scale, h * scale
-        x1, y1 = math.floor(cx - w / 2), math.floor(cy - h / 2)
-        x2, y2 = math.ceil(cx + w / 2), math.ceil(cy + h / 2)
+            centres = [(cx, cy)]
+            if t.coast_centre is not None:
+                centres.append((float(t.coast_centre[0]), float(t.coast_centre[1])))
+            x1 = min(c[0] - w / 2 for c in centres)
+            y1 = min(c[1] - h / 2 for c in centres)
+            x2 = max(c[0] + w / 2 for c in centres)
+            y2 = max(c[1] + h / 2 for c in centres)
+        x1, y1 = math.floor(x1), math.floor(y1)
+        x2, y2 = math.ceil(x2), math.ceil(y2)
         if frame_size is not None:
             x1, y1 = max(0, x1), max(0, y1)
             x2, y2 = min(frame_size[0], x2), min(frame_size[1], y2)

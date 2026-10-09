@@ -71,15 +71,21 @@ class PreviewWindow:
         self.title = title
         cv2.namedWindow(self.title, cv2.WINDOW_AUTOSIZE)
 
-    def show(self, frame: Frame, overlay_lines: list[str] | None = None) -> bool:
-        """Display a frame. Returns True if the user asked to quit (q, Esc, or closed window)."""
+    def show(
+        self, frame: Frame, overlay_lines: list[str] | None = None, wait_ms: int = 1
+    ) -> str | None:
+        """Display a frame and return the key pressed, if any.
+
+        Keys come back as lowercase characters (" " for space). Returns "quit" for
+        q, Esc, or the window being closed. Waits up to `wait_ms` for a key.
+        """
         if overlay_lines:
             frame = draw_overlay(frame, overlay_lines)
         cv2.imshow(self.title, frame)
-        key = cv2.waitKey(1) & 0xFF
-        if key in _QUIT_KEYS:
-            return True
-        return cv2.getWindowProperty(self.title, cv2.WND_PROP_VISIBLE) < 1
+        key = cv2.waitKey(wait_ms) & 0xFF
+        if key in _QUIT_KEYS or cv2.getWindowProperty(self.title, cv2.WND_PROP_VISIBLE) < 1:
+            return "quit"
+        return chr(key).lower() if key != 0xFF else None
 
     def close(self) -> None:
         cv2.destroyWindow(self.title)
