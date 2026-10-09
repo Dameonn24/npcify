@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Environments
+.venv/
+.env
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Media and outputs (never commit footage or faces)
+*.mp4
+*.mov
+*.avi
+*.mkv
+outputs/
+
+# OS / editors
+.DS_Store
+.vscode/
+.idea/
