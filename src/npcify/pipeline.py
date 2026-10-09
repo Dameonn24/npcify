@@ -2,8 +2,9 @@
 
 capture -> detect -> track -> decide -> pose -> render -> safety -> output.
 Stages are wired in as they are built. So far: detect, track, decide (with
-recognition when a KeepListPolicy is used), and anonymise (every face that
-isn't explicitly kept real is hidden).
+recognition when a KeepListPolicy is used), pose (head angles and expressions
+for hidden faces, when a PoseEstimator is given), and anonymise (every face
+that isn't explicitly kept real is hidden).
 
 Detection, tracking and covering all happen on the same frame inside
 process_frame, before it is returned, so a face is never shown uncovered while
@@ -16,10 +17,11 @@ import sys
 
 from npcify.decide import CoveragePolicy, HideEveryone, regions_to_cover
 from npcify.detect import FaceDetector, YuNetDetector
+from npcify.pose import PoseEstimator
 from npcify.render import Anonymizer
 from npcify.timing import StageTimer
 from npcify.track import Tracker
-from npcify.types import CoverRegion, Decision, Detection, Frame, Track
+from npcify.types import CoverRegion, Decision, Detection, FaceState, Frame, Track
 
 
 class Pipeline:
@@ -43,6 +45,7 @@ class Pipeline:
         tracker: Tracker | None = None,
         policy: CoveragePolicy | None = None,
         anonymizer: Anonymizer | None = None,
+        pose: PoseEstimator | None = None,
         timer: StageTimer | None = None,
         detect_every: int = 1,
         debug_no_anonymise: bool = False,
@@ -57,6 +60,7 @@ class Pipeline:
         )
         self.policy = policy if policy is not None else HideEveryone()
         self.anonymizer = anonymizer if anonymizer is not None else Anonymizer()
+        self.pose = pose
         self.timer = timer if timer is not None else StageTimer()
         if getattr(self.policy, "timer", False) is None:
             self.policy.timer = self.timer  # type: ignore[attr-defined]  # share "recognise" timings
@@ -74,6 +78,7 @@ class Pipeline:
         self.tracks: list[Track] = []
         self.decisions: list[Decision] = []
         self.regions: list[CoverRegion] = []
+        self.faces: dict[int, FaceState] = {}  # hidden tracks only; empty without `pose`
 
     def process_frame(self, frame: Frame) -> Frame:
         """Detect, track and hide faces. Returns a new frame; the input is unchanged."""
@@ -91,6 +96,9 @@ class Pipeline:
         with self.timer.stage("decide"):
             self.decisions = self.policy.decide(frame, self.tracks)
             self.regions = regions_to_cover(self.tracks, self.detections, self.decisions)
+        if self.pose is not None:
+            with self.timer.stage("pose"):
+                self.faces = self.pose.update(frame, self.tracks, self.decisions)
         with self.timer.stage("anonymise"):
             return self.anonymise(frame)
 

@@ -102,11 +102,47 @@ class CoverRegion:
     reason: str
 
 
+@dataclass(frozen=True)
+class AvatarExpression:
+    """The small, stable set of face values that drive avatars.
+
+    This is the contract between pose estimation and avatar rendering: avatar
+    styles should only need these. Left/right are in IMAGE terms (as the face
+    appears in the frame being drawn on), so they are correct whether or not
+    the video is mirrored.
+
+    blink_left / blink_right: eye closed amount, 0 open .. 1 closed, for the eye
+        on the image's left / right.
+    mouth_open: 0 closed .. 1 wide open.
+    smile: 0 neutral .. 1 big smile.
+    brows_up / brows_down: eyebrows raised (surprise) / lowered (frown), 0 .. 1.
+    look_x: eye direction, -1 toward image left .. 1 toward image right.
+    look_y: eye direction, -1 down .. 1 up.
+    """
+
+    blink_left: float = 0.0
+    blink_right: float = 0.0
+    mouth_open: float = 0.0
+    smile: float = 0.0
+    brows_up: float = 0.0
+    brows_down: float = 0.0
+    look_x: float = 0.0
+    look_y: float = 0.0
+
+
 @dataclass
 class FaceState:
-    """Head angles (degrees) and expression values for one tracked face.
+    """Head pose and expression for one hidden (bystander) face.
 
-    Expressions map a name (e.g. "smile", "jaw_open") to a strength in [0, 1].
+    Angles are in degrees, in IMAGE terms:
+        yaw: + face turned toward the image's right, - toward its left.
+        pitch: + looking up, - looking down.
+        roll: + head tilted clockwise as seen in the image.
+    `expressions` holds the raw blendshape scores (52 for the landmarker,
+    empty for the coarse estimate). `source` is "landmarker", "coarse" or
+    "none"; `confidence` is 0..1. `mesh` is the full-frame landmark mesh when
+    available (debug drawing only). All of this lives in memory only, for live
+    tracks; it is never logged or saved.
     """
 
     track_id: int
@@ -114,3 +150,7 @@ class FaceState:
     pitch: float = 0.0
     roll: float = 0.0
     expressions: dict[str, float] = field(default_factory=dict)
+    avatar: AvatarExpression = field(default_factory=AvatarExpression)
+    source: str = "none"
+    confidence: float = 0.0
+    mesh: NDArray[np.float32] | None = None

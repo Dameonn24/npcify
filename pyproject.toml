@@ -5,8 +5,9 @@ description = "Replace bystanders' faces with cartoon avatars in live video, on-
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
 dependencies = [
+    "mediapipe>=1.1.0",
     "numpy",
-    "opencv-python",
+    "opencv-contrib-python>=5.0.0.93",
     "scipy>=1.17.1",
 ]
 

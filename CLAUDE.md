@@ -17,7 +17,8 @@ npcify is an open-source Python library that takes a live camera feed or a video
    - Only kept people's faceprints are stored, and only in memory by default.
    - A bystander's faceprint is computed only to compare against the keep list, then discarded immediately. Never store bystander faceprints on tracks, in statuses, in logs, or on disk.
    - The keep list is written to disk only with an explicit `--save-keep-list PATH` (prints a warning), and saves faceprints and labels only, never face images. `--keep-list PATH` loads one.
-7. **Licences.** Don't use InsightFace models: their pretrained weights are licensed for non-commercial use only. Current models: YuNet (MIT) and SFace (Apache 2.0), both from OpenCV Zoo. Check the licence of any new model before adding it.
+7. **Pose and expression data stay in memory.** Landmarks, head angles and expression values exist only in memory, only for live hidden tracks, and are deleted when the track is removed or kept real. Never log them or write them to disk.
+8. **Licences.** Don't use InsightFace models: their pretrained weights are licensed for non-commercial use only. Current models: YuNet (MIT) and SFace (Apache 2.0) from OpenCV Zoo, and MediaPipe Face Landmarker (Apache 2.0). Check the licence of any new model before adding it.
 
 ## Hiding faces (how it works)
 
@@ -31,6 +32,13 @@ npcify is an open-source Python library that takes a live camera feed or a video
 - `recognise.py`: SFace faceprints, `QualityGate` (only big, roughly frontal views get faceprints), `KeepList` (cosine similarity, threshold 0.40), `Enrolment`.
 - `KeepListPolicy` rules: every track starts hidden; revealed after 3 of its last 5 checks match the same kept person; hidden after 2 failed checks in a row (1 if another face is close by); a kept track that recovers from lost starts hidden and needs 2 matches in a row; only the best-matching track per kept person is shown; poor-quality views never change status.
 - A kept track that is lost (coasting) stays uncovered, but never exempts a raw detection near it.
+
+## Pose and expressions (input to avatars)
+
+- `pose.py`: `PoseEstimator` runs MediaPipe Face Landmarker on a crop of each hidden track's face (max 4 per frame, round-robin; others hold their last values). Faces under 50 px or landmarker failures fall back to a coarse pose from YuNet's 5 points.
+- Output per hidden track: `FaceState` (yaw/pitch/roll in degrees, raw blendshapes, `avatar: AvatarExpression`, `source`, `confidence`). Smoothed with One Euro filters (`smoothing.py`).
+- `AvatarExpression` (in `types.py`) is the stable contract for avatar rendering. All left/right values and angles are in **image** terms, so they're correct for mirrored and unmirrored video. Change it only deliberately.
+- Dependencies: use `opencv-contrib-python` only (mediapipe requires it; having `opencv-python` too makes the two fight over `cv2`).
 
 ## Known limitations (by design)
 
@@ -70,7 +78,7 @@ uv run ruff format .      # format
 4. Tracking ✅
 5. Blur everyone ✅
 6. Keep list with faceprints ✅
-7. Pose and expressions
+7. Pose and expressions ✅
 8. 2D avatars
 9. Safety net and delay buffer
 10. Virtual camera and video file output

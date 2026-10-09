@@ -42,6 +42,12 @@ MODELS: dict[str, ModelFile] = {
         sha256="0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79",
         description="SFace face recogniser (OpenCV Zoo, Apache 2.0 licence)",
     ),
+    "face_landmarker": ModelFile(
+        filename="face_landmarker_v1.task",
+        url="https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+        sha256="64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff",
+        description="MediaPipe Face Landmarker (Apache 2.0 licence)",
+    ),
 }
 
 

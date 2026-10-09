@@ -70,6 +70,21 @@ Turn on debug (**d**) to see each face's status (`hide 0.21`, `keep: person 1 0.
 | 6 | Remove | Right-click your face, then press **c**. | You're covered again straight away. |
 | 7 | 3–4 people | Several people in frame, one kept. | FPS stays 25+. |
 
+## Pose and expressions (step 7)
+
+Needs a second person (bystander): your own face is kept real only if you click it, so without a click you can test on yourself. Turn on debug (**d**).
+
+| # | Scenario | Good enough looks like |
+|---|----------|------------------------|
+| 1 | Turn left/right | `y` goes + when the face turns toward the right of the window, - toward the left, in both normal and `--no-mirror` mode. Blue axis points where the nose points. |
+| 2 | Nod up/down | `p` goes + looking up, - looking down. |
+| 3 | Tilt head | `r` goes + tilting clockwise as seen in the window. |
+| 4 | Blink, wink | `blinkL`/`blinkR` jump for the eye on that side of the window, within a frame or two. Winks show on one side only. |
+| 5 | Mouth, smile, brows | `mouth`, `smile`, `brow+` (surprised) and `brow-` (frown) bars respond. |
+| 6 | Hold still | Numbers settle; they shouldn't wander by more than a degree or two. |
+| 7 | Move back 3–5 m | Source switches from `lm` to `coarse`; yaw and roll still roughly right, bars hidden. |
+| 8 | 3–4 bystanders | FPS stays 25+. |
+
 ## Record results
 
 Note the date, the lighting, the settings used (`--det-width`, `--det-threshold`) and which scenarios failed. Failures in 3–7 are inputs to the safety-net work in step 9, where anything uncertain must be blurred rather than shown.

@@ -27,11 +27,12 @@ import time
 
 from npcify import Pipeline
 from npcify.capture import CameraError, FrameSource
-from npcify.debug import TrackTrails, draw_tracks
+from npcify.debug import TrackTrails, draw_face_states, draw_tracks
 from npcify.decide import KeepListPolicy
 from npcify.detect import DEFAULT_DET_WIDTH, YuNetDetector
 from npcify.models import ModelDownloadError
 from npcify.output import PreviewWindow, format_overlay_lines
+from npcify.pose import PoseEstimator
 from npcify.recognise import DEFAULT_MATCH_THRESHOLD, KeepList, SFaceRecognizer
 from npcify.render import STYLES, Anonymizer, Padding
 from npcify.timing import FPSCounter, StageTimer
@@ -105,6 +106,11 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_DET_WIDTH,
         help="width detection runs at; larger finds smaller faces but is slower "
         f"(default: {DEFAULT_DET_WIDTH})",
+    )
+    p.add_argument(
+        "--debug-mesh",
+        action="store_true",
+        help="in debug view, also draw the full face landmark mesh for hidden faces",
     )
     p.add_argument(
         "--match-threshold",
@@ -195,6 +201,7 @@ def main() -> int:
         # The detector runs at the low threshold so weak detections are covered too.
         detector = YuNetDetector(score_threshold=config.low_threshold, det_width=args.det_width)
         recogniser = SFaceRecognizer()
+        pose = PoseEstimator()
     except ModelDownloadError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -223,6 +230,7 @@ def main() -> int:
         detector=detector,
         tracker=Tracker(config),
         policy=policy,
+        pose=pose,
         anonymizer=Anonymizer(style=style, padding=padding),
         timer=timer,
         detect_every=max(1, args.detect_every),
@@ -270,6 +278,9 @@ def main() -> int:
                 if show_debug:
                     notes = {t.track_id: policy.status_text(t.track_id) for t in pipeline.tracks}
                     shown = draw_tracks(shown, pipeline.tracks, trails, pipeline.detections, notes)
+                    shown = draw_face_states(
+                        shown, pipeline.tracks, pipeline.faces, mesh=args.debug_mesh
+                    )
                 lines = None
                 if not args.no_overlay:
                     res = (shown.shape[1], shown.shape[0])

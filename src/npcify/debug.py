@@ -14,7 +14,8 @@ from collections.abc import Mapping
 import cv2
 
 from npcify.output import put_outlined_text
-from npcify.types import BoundingBox, Detection, Frame, Point, Track, TrackState
+from npcify.pose import angles_to_rotation
+from npcify.types import BoundingBox, Detection, FaceState, Frame, Point, Track, TrackState
 
 _BOX_COLOUR = (0, 255, 0)  # BGR green
 _RAW_COLOUR = (160, 160, 160)  # grey, for raw detections under tracks
@@ -112,4 +113,74 @@ def draw_tracks(
         if notes and t.track_id in notes:
             put_outlined_text(out, notes[t.track_id], (t.box.x, top - 16), colour)
         _landmarks(out, t.landmarks)
+    return out
+
+
+_BARS = [
+    ("blinkL", "blink_left"),
+    ("blinkR", "blink_right"),
+    ("mouth", "mouth_open"),
+    ("smile", "smile"),
+    ("brow+", "brows_up"),
+    ("brow-", "brows_down"),
+]
+
+
+def draw_face_states(
+    frame: Frame,
+    tracks: list[Track],
+    states: Mapping[int, FaceState],
+    mesh: bool = False,
+) -> Frame:
+    """Return a copy with head axes, angles and expression bars for each hidden face.
+
+    Axes: red = the face's right-left axis, green = up, blue = where the nose points.
+    """
+    out = frame.copy()
+    for t in tracks:
+        s = states.get(t.track_id)
+        if s is None or s.source == "none":
+            continue
+        b = t.box
+        if mesh and s.mesh is not None:
+            for x, y in s.mesh:
+                out[
+                    min(max(int(y), 0), out.shape[0] - 1), min(max(int(x), 0), out.shape[1] - 1)
+                ] = (
+                    0,
+                    255,
+                    255,
+                )
+
+        # Head axes, projected straight onto the image (camera y is up, image y is down).
+        cx, cy = b.x + b.width / 2, b.y + b.height / 2
+        if s.mesh is not None and len(s.mesh) > 1:
+            cx, cy = float(s.mesh[1][0]), float(s.mesh[1][1])  # nose tip
+        r = angles_to_rotation(s.yaw, s.pitch, s.roll)
+        length = 0.5 * b.width
+        for axis, colour in ((0, (0, 0, 255)), (1, (0, 255, 0)), (2, (255, 0, 0))):
+            vx, vy = r[0, axis], -r[1, axis]
+            end = (round(cx + length * vx), round(cy + length * vy))
+            cv2.line(out, (round(cx), round(cy)), end, colour, 2, cv2.LINE_AA)
+
+        # Numbers and bars to the right of the face.
+        x0, y0 = b.x + b.width + 6, b.y + 12
+        src = "lm" if s.source == "landmarker" else s.source
+        put_outlined_text(out, f"y{s.yaw:+.0f} p{s.pitch:+.0f} r{s.roll:+.0f} {src}", (x0, y0))
+        if s.source != "landmarker":
+            continue
+        for i, (name, attr) in enumerate(_BARS):
+            y = y0 + 16 + i * 13
+            put_outlined_text(out, name, (x0, y), scale=0.38)
+            value = getattr(s.avatar, attr)
+            cv2.rectangle(out, (x0 + 46, y - 8), (x0 + 96, y - 1), (60, 60, 60), -1)
+            cv2.rectangle(
+                out, (x0 + 46, y - 8), (x0 + 46 + round(50 * value), y - 1), (0, 220, 255), -1
+            )
+        # Gaze: a dot inside a small box.
+        gy = y0 + 16 + len(_BARS) * 13
+        cv2.rectangle(out, (x0, gy - 8), (x0 + 30, gy + 14), (60, 60, 60), 1)
+        gx = x0 + 15 + round(13 * s.avatar.look_x)
+        gyy = gy + 3 - round(9 * s.avatar.look_y)
+        cv2.circle(out, (gx, gyy), 3, (0, 220, 255), -1)
     return out

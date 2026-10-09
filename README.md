@@ -39,9 +39,9 @@ uv run python examples/webcam_demo.py --video some_clip.mp4 # play a video file 
 uv run python examples/webcam_demo.py --help                # all options
 ```
 
-Options: `--camera N`, `--video PATH`, `--width W`, `--height H`, `--no-mirror`, `--no-overlay`, `--style S`, `--padding W H`, `--debug`, `--match-threshold T`, `--keep-list PATH`, `--save-keep-list PATH`, `--det-threshold T`, `--low-threshold T`, `--det-width W`, `--max-age N`, `--recover-distance D`, `--detect-every N`.
+Options: `--camera N`, `--video PATH`, `--width W`, `--height H`, `--no-mirror`, `--no-overlay`, `--style S`, `--padding W H`, `--debug`, `--debug-mesh`, `--match-threshold T`, `--keep-list PATH`, `--save-keep-list PATH`, `--det-threshold T`, `--low-threshold T`, `--det-width W`, `--max-age N`, `--recover-distance D`, `--detect-every N`.
 
-With debug boxes on (**d**), each tracked face gets a stable ID and its own colour, with a short trail showing where it has been. Labels show the ID, state and confidence: *tentative* (just appeared), *confirmed*, or *lost* (dashed box; the detector missed it, so its position is predicted and the box grows). Thin grey boxes are the raw detections. The dots mark the eyes, nose and mouth corners.
+With debug on (**d**), each hidden face also shows its head direction (red/green/blue axes), yaw/pitch/roll in degrees, bars for blink, mouth, smile and eyebrows, a gaze dot, and whether the values came from the full landmarker (`lm`) or the rough fallback for small faces (`coarse`). Add `--debug-mesh` to draw the full landmark mesh. Each tracked face gets a stable ID and its own colour, with a short trail showing where it has been. Labels show the ID, state and confidence: *tentative* (just appeared), *confirmed*, or *lost* (dashed box; the detector missed it, so its position is predicted and the box grows). Thin grey boxes are the raw detections. The dots mark the eyes, nose and mouth corners.
 
 The keep list lives in memory and is forgotten when you quit. To reuse it, save it with `--save-keep-list me.npz` and load it next time with `--keep-list me.npz`. The file holds faceprints (biometric data, but no images): keep it private.
 
@@ -58,7 +58,7 @@ Tuning:
 
 ### Models
 
-The face detector (YuNet, MIT licence) and face recogniser (SFace, Apache 2.0 licence), both from [OpenCV Zoo](https://github.com/opencv/opencv_zoo), are downloaded automatically the first time you run the demo, into `~/.cache/npcify/models/`, and checked against a known checksum. To download it in advance (e.g. before going offline):
+The face detector (YuNet, MIT licence) and face recogniser (SFace, Apache 2.0 licence) from [OpenCV Zoo](https://github.com/opencv/opencv_zoo), and MediaPipe's Face Landmarker (Apache 2.0 licence), are downloaded automatically the first time you run the demo, into `~/.cache/npcify/models/`, and checked against a known checksum. To download it in advance (e.g. before going offline):
 
 ```bash
 uv run npcify-download-models
