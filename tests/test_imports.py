@@ -14,6 +14,7 @@ MODULES = [
     "npcify.safety",
     "npcify.output",
     "npcify.pipeline",
+    "npcify.timing",
 ]
 
 
