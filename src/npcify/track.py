@@ -78,7 +78,7 @@ class TrackerConfig:
     match_iou: float = 0.2
     low_match_iou: float = 0.5
     min_hits: int = 3
-    max_age: int = 60
+    max_age: int = 90
     lost_velocity_decay: float = 0.9
     recover_distance: float = 1.5
     recover_size_ratio: float = 2.5
