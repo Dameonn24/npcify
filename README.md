@@ -18,7 +18,7 @@ uv run python -c "import npcify"
 
 ## Running the demo
 
-Shows your webcam through the npcify pipeline with **every face hidden** except people you choose to keep.
+Shows your webcam through the npcify pipeline with **every face hidden** except people you choose to keep. Hidden people get a random cartoon head that copies their head movement, blinks, talking, smiles and eyebrows; anyone the system isn't sure about stays blurred.
 
 **Keep yourself real:** click your face and look at the camera for about a second (moving your head a little). The overlay shows enrolment progress, then "Keeping: person 1". Right-click (or shift/ctrl-click) a kept face to hide that person again.
 
@@ -26,8 +26,11 @@ Shows your webcam through the npcify pipeline with **every face hidden** except 
 |-----|--------|
 | q / Esc | quit |
 | c | clear the keep list |
+| a | switch between cartoon avatars and blur only |
+| r | reroll everyone's avatar look |
+| p | save a screenshot of the output to `outputs/screenshots/` |
 | d | show/hide debug boxes and track IDs |
-| s | cycle style: pixelate-blur, pixelate, blur, solid |
+| s | cycle the blur style under the avatars: pixelate-blur, pixelate, blur, solid |
 | space | pause / resume |
 | n | while paused, step one frame (check for leaks frame by frame) |
 
@@ -39,7 +42,7 @@ uv run python examples/webcam_demo.py --video some_clip.mp4 # play a video file 
 uv run python examples/webcam_demo.py --help                # all options
 ```
 
-Options: `--camera N`, `--video PATH`, `--width W`, `--height H`, `--no-mirror`, `--no-overlay`, `--style S`, `--padding W H`, `--debug`, `--debug-mesh`, `--match-threshold T`, `--keep-list PATH`, `--save-keep-list PATH`, `--det-threshold T`, `--low-threshold T`, `--det-width W`, `--max-age N`, `--recover-distance D`, `--detect-every N`.
+Options: `--camera N`, `--video PATH`, `--width W`, `--height H`, `--no-mirror`, `--no-overlay`, `--mode avatar|blur`, `--style S`, `--padding W H`, `--debug`, `--debug-mesh`, `--match-threshold T`, `--keep-list PATH`, `--save-keep-list PATH`, `--det-threshold T`, `--low-threshold T`, `--det-width W`, `--max-age N`, `--recover-distance D`, `--detect-every N`.
 
 With debug on (**d**), each hidden face also shows its head direction (red/green/blue axes), yaw/pitch/roll in degrees, bars for blink, mouth, smile and eyebrows, a gaze dot, and whether the values came from the full landmarker (`lm`) or the rough fallback for small faces (`coarse`). Add `--debug-mesh` to draw the full landmark mesh. Each tracked face gets a stable ID and its own colour, with a short trail showing where it has been. Labels show the ID, state and confidence: *tentative* (just appeared), *confirmed*, or *lost* (dashed box; the detector missed it, so its position is predicted and the box grows). Thin grey boxes are the raw detections. The dots mark the eyes, nose and mouth corners.
 

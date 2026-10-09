@@ -40,6 +40,13 @@ npcify is an open-source Python library that takes a live camera feed or a video
 - `AvatarExpression` (in `types.py`) is the stable contract for avatar rendering. All left/right values and angles are in **image** terms, so they're correct for mirrored and unmirrored video. Change it only deliberately.
 - Dependencies: use `opencv-contrib-python` only (mediapipe requires it; having `opencv-python` too makes the two fight over `cv2`).
 
+## Avatars
+
+- `avatar.py`: the original "npc" style (`NpcRenderer`). Inspired by the friendly, rounded feel of Wii-era avatars but never copying Mii designs, proportions or assets.
+- Looks are **random**, never derived from the real person (skin, hair, etc.): a random look reveals nothing about who is underneath. Seeded from track ID + a random per-session value, so a look is stable for a track but doesn't repeat across sessions.
+- `render.py`: `AvatarRenderer` interface (premultiplied BGRA, plus a `cover_centre`/`cover_radius` circle that must always be fully opaque) and `AvatarLayer`, which places avatars so that circle contains the face box.
+- Safety: avatars are always drawn **on top of** the step 5 anonymisation, never instead of it. Avatar only for confirmed hidden tracks with a landmarker FaceState (or a coarse one for faces ≥ 40 px, neutral expression). Tentative, lost, unmatched and no-FaceState faces stay blur only. Fade in over 5 frames; drop back to blur instantly.
+
 ## Known limitations (by design)
 
 - A person who leaves and comes back much later (after `max_age` frames, ~3 s) gets a new track ID. Recognising returning people is step 6 (keep list with faceprints).
@@ -79,7 +86,7 @@ uv run ruff format .      # format
 5. Blur everyone ✅
 6. Keep list with faceprints ✅
 7. Pose and expressions ✅
-8. 2D avatars
+8. 2D avatars ✅
 9. Safety net and delay buffer
 10. Virtual camera and video file output
 11. Speed pass

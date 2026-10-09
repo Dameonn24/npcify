@@ -12,7 +12,10 @@ Keys:
     q / Esc   quit
     c         clear the keep list
     d         toggle debug boxes, track IDs and keep/hide status
-    s         cycle anonymisation style
+    a         switch between cartoon avatars and blur only
+    r         reroll everyone's avatar look
+    p         save a screenshot of the output to outputs/screenshots/
+    s         cycle the blur style (what's under the avatars)
     space     pause / resume
     n         when paused, step forward one frame (to check for leaks)
 
@@ -24,8 +27,12 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from pathlib import Path
+
+import cv2
 
 from npcify import Pipeline
+from npcify.avatar import NpcRenderer
 from npcify.capture import CameraError, FrameSource
 from npcify.debug import TrackTrails, draw_face_states, draw_tracks
 from npcify.decide import KeepListPolicy
@@ -34,7 +41,7 @@ from npcify.models import ModelDownloadError
 from npcify.output import PreviewWindow, format_overlay_lines
 from npcify.pose import PoseEstimator
 from npcify.recognise import DEFAULT_MATCH_THRESHOLD, KeepList, SFaceRecognizer
-from npcify.render import STYLES, Anonymizer, Padding
+from npcify.render import STYLES, Anonymizer, AvatarLayer, Padding
 from npcify.timing import FPSCounter, StageTimer
 from npcify.track import Tracker, TrackerConfig
 from npcify.types import Track, TrackState
@@ -50,6 +57,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--height", type=int, default=720, help="requested height (default: 720)")
     p.add_argument("--no-mirror", action="store_true", help="don't flip the webcam image")
     p.add_argument("--no-overlay", action="store_true", help="hide the FPS overlay")
+    p.add_argument(
+        "--mode",
+        choices=("avatar", "blur"),
+        default="avatar",
+        help="cartoon avatars over hidden faces, or blur only (default: avatar)",
+    )
     p.add_argument(
         "--style",
         choices=STYLES,
@@ -166,6 +179,22 @@ def keep_summary(policy: KeepListPolicy) -> list[str]:
     return lines
 
 
+def save_screenshot(output, anonymisation_off: bool) -> None:
+    """Save the output frame (as viewers see it, without debug drawing)."""
+    if output is None:
+        return
+    if anonymisation_off:
+        print("Screenshots are disabled while anonymisation is off.", file=sys.stderr)
+        return
+    folder = Path("outputs/screenshots")
+    folder.mkdir(parents=True, exist_ok=True)
+    path = (
+        folder / f"npcify_{time.strftime('%Y%m%d_%H%M%S')}_{int(time.time() * 1000) % 1000:03d}.png"
+    )
+    cv2.imwrite(str(path), output)
+    print(f"Saved {path}  (kept people appear unhidden in it)")
+
+
 def main() -> int:
     args = parse_args()
     source_arg = args.video if args.video else args.camera
@@ -232,6 +261,7 @@ def main() -> int:
         policy=policy,
         pose=pose,
         anonymizer=Anonymizer(style=style, padding=padding),
+        avatars=AvatarLayer(NpcRenderer()),
         timer=timer,
         detect_every=max(1, args.detect_every),
         debug_no_anonymise=args.debug_no_anonymise,
@@ -245,7 +275,11 @@ def main() -> int:
     else:
         print(f"Resolution: {w}x{h}")
     print("Click a face to keep it real; right/shift-click to hide it again.")
-    print("Keys: q quit, c clear keep list, d debug, s style, space pause, n next frame")
+    pipeline.show_avatars = args.mode == "avatar"
+    print(
+        "Keys: q quit, a avatars/blur, r reroll looks, p screenshot, c clear keep list, "
+        "d debug, s blur style, space pause, n next frame"
+    )
 
     # Play video files at their native speed rather than as fast as possible.
     frame_period = 1.0 / source.source_fps if not source.is_camera and source.source_fps else 0.0
@@ -286,7 +320,7 @@ def main() -> int:
                     res = (shown.shape[1], shown.shape[0])
                     extra = [
                         *track_summary(pipeline),
-                        f"style: {style}  (s to change)",
+                        f"mode: {'avatar' if pipeline.show_avatars else 'blur'}  blur: {style}",
                         *keep_summary(policy),
                     ]
                     if paused:
@@ -325,7 +359,18 @@ def main() -> int:
                 style = STYLES[(STYLES.index(style) + 1) % len(STYLES)]
                 pipeline.anonymizer = Anonymizer(style=style, padding=padding)
                 if paused and raw is not None:
-                    output = pipeline.anonymise(raw)
+                    output = pipeline.render(raw)
+            elif key == "a":
+                pipeline.show_avatars = not pipeline.show_avatars
+                if paused and raw is not None:
+                    output = pipeline.render(raw)
+            elif key == "r":
+                if pipeline.avatars is not None:
+                    pipeline.avatars.reroll()
+                    if paused and raw is not None:
+                        output = pipeline.render(raw)
+            elif key == "p":
+                save_screenshot(output, args.debug_no_anonymise)
             elif key == " ":
                 paused = not paused
                 next_frame_at = time.perf_counter()

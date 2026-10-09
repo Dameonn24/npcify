@@ -85,6 +85,19 @@ Needs a second person (bystander): your own face is kept real only if you click 
 | 7 | Move back 3–5 m | Source switches from `lm` to `coarse`; yaw and roll still roughly right, bars hidden. |
 | 8 | 3–4 bystanders | FPS stays 25+. |
 
+## Avatars (step 8)
+
+| # | Scenario | Good enough looks like |
+|---|----------|------------------------|
+| 1 | Bystander appears | Blurred first, then a cartoon head fades in within ~0.3 s. |
+| 2 | Turn, nod, tilt | The head turns (features slide, more hair shows), nods and tilts with them, without lag or wobble. |
+| 3 | Blink, talk, smile, brows | Eyes close, mouth opens and closes while talking, mouth curves when smiling, brows move. |
+| 4 | Step through (space, n) | No frame shows any part of a real face, including during the fade-in and when a track is lost. |
+| 5 | Lost / far / new faces | Dropped back to blur instantly, never a frozen avatar over an empty space. |
+| 6 | Kept person | Stays real, never gets an avatar. |
+| 7 | Keys | **a** toggles avatars/blur, **r** gives new looks, **p** saves a screenshot. |
+| 8 | 3–4 bystanders | FPS 25+. |
+
 ## Record results
 
 Note the date, the lighting, the settings used (`--det-width`, `--det-threshold`) and which scenarios failed. Failures in 3–7 are inputs to the safety-net work in step 9, where anything uncertain must be blurred rather than shown.
