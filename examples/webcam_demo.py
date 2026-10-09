@@ -14,11 +14,13 @@ import time
 
 from npcify import Pipeline
 from npcify.capture import CameraError, FrameSource
-from npcify.debug import draw_detections
+from npcify.debug import TrackTrails, draw_tracks
 from npcify.detect import YuNetDetector
 from npcify.models import ModelDownloadError
 from npcify.output import PreviewWindow, format_overlay_lines
 from npcify.timing import FPSCounter, StageTimer
+from npcify.track import Tracker, TrackerConfig
+from npcify.types import TrackState
 
 
 def parse_args() -> argparse.Namespace:
@@ -33,10 +35,31 @@ def parse_args() -> argparse.Namespace:
         "--show-detections",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="draw face boxes, scores and landmarks (default: on)",
+        help="draw tracked faces with IDs, trails and landmarks (default: on)",
     )
     p.add_argument(
-        "--det-threshold", type=float, default=0.6, help="face confidence threshold (default: 0.6)"
+        "--det-threshold",
+        type=float,
+        default=0.6,
+        help="confidence needed to start tracking a new face (default: 0.6)",
+    )
+    p.add_argument(
+        "--low-threshold",
+        type=float,
+        default=0.3,
+        help="lower confidence that can keep an existing track alive (default: 0.3)",
+    )
+    p.add_argument(
+        "--max-age",
+        type=int,
+        default=15,
+        help="frames to keep predicting a face the detector lost (default: 15)",
+    )
+    p.add_argument(
+        "--detect-every",
+        type=int,
+        default=1,
+        help="run detection every N frames; the tracker predicts in between (default: 1)",
     )
     p.add_argument(
         "--det-width",
@@ -47,13 +70,30 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+def track_summary(pipeline: Pipeline) -> list[str]:
+    def count(state: TrackState) -> int:
+        return sum(t.state is state for t in pipeline.tracks)
+
+    return [
+        f"faces: {len(pipeline.detections)}  tracks: {len(pipeline.tracks)}",
+        f"  {count(TrackState.CONFIRMED)} confirmed, {count(TrackState.TENTATIVE)} tentative, "
+        f"{count(TrackState.LOST)} lost",
+    ]
+
+
 def main() -> int:
     args = parse_args()
     source_arg = args.video if args.video else args.camera
     mirror = False if args.no_mirror else None  # None = default for the source type
 
+    config = TrackerConfig(
+        high_threshold=args.det_threshold,
+        low_threshold=min(args.low_threshold, args.det_threshold),
+        max_age=args.max_age,
+    )
     try:
-        detector = YuNetDetector(score_threshold=args.det_threshold, det_width=args.det_width)
+        # The detector runs at the low threshold so weak detections reach the tracker.
+        detector = YuNetDetector(score_threshold=config.low_threshold, det_width=args.det_width)
     except ModelDownloadError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -66,7 +106,13 @@ def main() -> int:
 
     fps = FPSCounter()
     timer = StageTimer()
-    pipeline = Pipeline(detector=detector, timer=timer)
+    pipeline = Pipeline(
+        detector=detector,
+        tracker=Tracker(config),
+        timer=timer,
+        detect_every=max(1, args.detect_every),
+    )
+    trails = TrackTrails()
     window: PreviewWindow | None = None
 
     w, h = source.resolution
@@ -94,12 +140,13 @@ def main() -> int:
 
             with timer.stage("display"):
                 if args.show_detections:
-                    frame = draw_detections(frame, pipeline.detections)
+                    trails.update(pipeline.tracks)
+                    frame = draw_tracks(frame, pipeline.tracks, trails, pipeline.detections)
                 lines = None
                 if not args.no_overlay:
                     res = (frame.shape[1], frame.shape[0])
                     lines = format_overlay_lines(
-                        fps.fps, fps.frame_ms, res, timer.averages(), len(pipeline.detections)
+                        fps.fps, fps.frame_ms, res, timer.averages(), track_summary(pipeline)
                     )
                 quit_requested = window.show(frame, lines)
             fps.tick()

@@ -8,6 +8,11 @@ npcify is an open-source Python library that takes a live camera feed or a video
 
 1. **Privacy by default.** All processing stays on-device. Never upload frames anywhere. Never save faces, face crops or faceprints (embeddings) to disk unless the user explicitly opts in. No telemetry.
 2. **Fail safe.** If the system is unsure about a face (low detection confidence, lost track, unknown identity, avatar can't be rendered), it must blur it. A real bystander face must never slip through. When in doubt, hide it.
+3. **Cover every track and every detection.** Tentative and lost tracks are still real faces. Any step that hides faces must cover every non-removed track (using its box, which for lost tracks is a predicted, enlarged box) *and* every raw detection, not just confirmed tracks. Confirmation only matters for things like stable avatar assignment, never for deciding whether to hide someone.
+
+## Known limitations (by design)
+
+- A person who leaves and comes back much later (after `max_age` frames) gets a new track ID. Recognising returning people is step 6 (keep list with faceprints).
 
 ## Target hardware
 
@@ -39,7 +44,7 @@ uv run ruff format .      # format
 1. Setup (project skeleton, tooling, tests) ✅
 2. Webcam in/out with FPS counter ✅
 3. Face detection ✅
-4. Tracking
+4. Tracking ✅
 5. Blur everyone
 6. Keep list with faceprints
 7. Pose and expressions

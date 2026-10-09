@@ -20,28 +20,43 @@ def format_overlay_lines(
     frame_ms: float,
     resolution: tuple[int, int],
     stage_ms: dict[str, float] | None = None,
-    faces: int | None = None,
+    extra: list[str] | None = None,
 ) -> list[str]:
-    """Build the text lines shown in the preview overlay."""
+    """Build the text lines shown in the preview overlay. `extra` lines go before timings."""
     lines = [
         f"{fps:5.1f} FPS  ({frame_ms:.1f} ms/frame)",
         f"{resolution[0]}x{resolution[1]}",
+        *(extra or []),
     ]
-    if faces is not None:
-        lines.append(f"faces: {faces}")
     for name, ms in (stage_ms or {}).items():
         lines.append(f"{name}: {ms:.1f} ms")
     return lines
+
+
+def put_outlined_text(
+    img: Frame,
+    text: str,
+    origin: tuple[int, int],
+    colour: tuple[int, int, int] = (255, 255, 255),
+    scale: float = _FONT_SCALE,
+) -> None:
+    """Draw text with a dark outline, in place, so it reads on light and dark scenes.
+
+    The outline is the same text drawn at small offsets rather than with a
+    thicker stroke, because in OpenCV 5 thicker text is also wider and would
+    not line up with the text on top.
+    """
+    x, y = origin
+    for dx, dy in ((-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)):
+        cv2.putText(img, text, (x + dx, y + dy), _FONT, scale, (0, 0, 0), 1, cv2.LINE_AA)
+    cv2.putText(img, text, origin, _FONT, scale, colour, 1, cv2.LINE_AA)
 
 
 def draw_overlay(frame: Frame, lines: list[str]) -> Frame:
     """Return a copy of the frame with white, dark-outlined text in the top-left corner."""
     out = frame.copy()
     for i, text in enumerate(lines):
-        origin = (10, 22 + i * _LINE_HEIGHT)
-        # Thick dark stroke first, then thin white text on top: readable on any background.
-        cv2.putText(out, text, origin, _FONT, _FONT_SCALE, (0, 0, 0), 3, cv2.LINE_AA)
-        cv2.putText(out, text, origin, _FONT, _FONT_SCALE, (255, 255, 255), 1, cv2.LINE_AA)
+        put_outlined_text(out, text, (10, 22 + i * _LINE_HEIGHT))
     return out
 
 

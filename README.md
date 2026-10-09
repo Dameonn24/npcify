@@ -26,9 +26,16 @@ uv run python examples/webcam_demo.py --video some_clip.mp4 # play a video file 
 uv run python examples/webcam_demo.py --help                # all options
 ```
 
-Options: `--camera N`, `--video PATH`, `--width W`, `--height H`, `--no-mirror`, `--no-overlay`, `--no-show-detections`, `--det-threshold T`, `--det-width W`.
+Options: `--camera N`, `--video PATH`, `--width W`, `--height H`, `--no-mirror`, `--no-overlay`, `--no-show-detections`, `--det-threshold T`, `--low-threshold T`, `--det-width W`, `--max-age N`, `--detect-every N`.
 
-Green boxes show detected faces with their confidence score; the dots mark the eyes, nose and mouth corners. If faces far from the camera are missed, try `--det-width 960` (slower, finds smaller faces). If it misses faces you can clearly see, lower `--det-threshold` (e.g. `0.5`).
+Each tracked face gets a stable ID and its own colour, with a short trail showing where it has been. Labels show the ID, state and confidence: *tentative* (just appeared), *confirmed*, or *lost* (dashed box; the detector missed it, so its position is predicted and the box grows). Thin grey boxes are the raw detections. The dots mark the eyes, nose and mouth corners.
+
+Tuning:
+
+- Far-away faces missed: `--det-width 960` (slower, finds smaller faces).
+- Faces you can clearly see not picked up: lower `--det-threshold` (e.g. `0.5`).
+- IDs change when someone turns their head or is covered for a moment: raise `--max-age` (e.g. `30`, about 1 second) or lower `--low-threshold` (e.g. `0.2`).
+- Boxes linger in empty space after someone leaves: lower `--max-age`.
 
 ### Models
 
@@ -47,6 +54,14 @@ uv run python examples/benchmark_detect.py some_clip.mp4 [--det-width 960]
 ```
 
 Prints the average detection time, the FPS that implies, and the average number of faces per frame.
+
+To check whether tracking holds together on a clip:
+
+```bash
+uv run python examples/track_report.py some_clip.mp4 [--max-age 30]
+```
+
+It prints how many IDs were created, how long tracks lasted, and how often lost tracks were recovered. A clip with 3 people should give about 3 confirmed IDs.
 
 Manual test checklist: [docs/testing.md](docs/testing.md).
 

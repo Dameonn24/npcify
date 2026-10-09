@@ -25,6 +25,21 @@ Also check:
 - **Nothing on blank scenes.** Point the camera at a wall or a busy bookshelf: no boxes on non-faces (occasional low-score false positives on posters or photos of faces are expected, since those *are* faces).
 - **q / Esc quits cleanly** and the camera light goes off.
 
+## Tracking (step 4)
+
+Watch the `#N` label on each face and the confirmed / tentative / lost counts in the overlay.
+
+| # | Scenario | How to test | Good enough looks like |
+|---|----------|-------------|------------------------|
+| 1 | Moving around | Lean, sway, and move around the frame for 30 s. | One ID the whole time. `tentative` only for the first ~3 frames. |
+| 2 | Head turn | Turn to full profile and back, slowly and then quickly. | Same ID after turning back. A dashed *lost* box while you're side-on is fine; it should stay over your head. |
+| 3 | Hand over face | Cover your face with your hand for ~0.5 s, then remove it. | Same ID. Dashed box stays over the face while covered. |
+| 4 | Two people crossing | Two people walk past each other, one in front of the other. | Each keeps their own ID most of the time. An occasional swap when both faces fully overlap is acceptable. |
+| 5 | Leave and return | Walk out of frame, wait 3 s, come back. | New ID on return (expected; recognising people is step 6). The old box disappears soon after you leave, not lingering more than ~0.5 s. |
+| 6 | False positives | Point the camera at a busy scene with no people. | Any brief false box stays *tentative* and vanishes; never *confirmed*. |
+
+For a recorded clip, `uv run python examples/track_report.py clip.mp4` should show about one confirmed ID per person.
+
 ## Record results
 
 Note the date, the lighting, the settings used (`--det-width`, `--det-threshold`) and which scenarios failed. Failures in 3–7 are inputs to the safety-net work in step 9, where anything uncertain must be blurred rather than shown.
