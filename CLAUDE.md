@@ -13,12 +13,24 @@ npcify is an open-source Python library that takes a live camera feed or a video
 4. **Covering happens in the same frame.** Detect, track, decide and anonymise all run inside `Pipeline.process_frame` before the frame is returned. No frame is ever shown before its faces are covered. `detect_every > 1` breaks this for brand-new faces and is for benchmarking only.
 5. **No off switch in user-facing tools.** There is no key or casual option to disable hiding. The only bypass is the loudly named `debug_no_anonymise` / `--debug-no-anonymise`, which prints a warning.
 
+6. **Faceprints are biometric data.**
+   - Only kept people's faceprints are stored, and only in memory by default.
+   - A bystander's faceprint is computed only to compare against the keep list, then discarded immediately. Never store bystander faceprints on tracks, in statuses, in logs, or on disk.
+   - The keep list is written to disk only with an explicit `--save-keep-list PATH` (prints a warning), and saves faceprints and labels only, never face images. `--keep-list PATH` loads one.
+7. **Licences.** Don't use InsightFace models: their pretrained weights are licensed for non-commercial use only. Current models: YuNet (MIT) and SFace (Apache 2.0), both from OpenCV Zoo. Check the licence of any new model before adding it.
+
 ## Hiding faces (how it works)
 
-- `decide.py`: a `CoveragePolicy` gives each track a `Decision`; `HideEveryone` is the default. `regions_to_cover` hides every track without an explicit `keep_real=True`, and every raw detection unless it is already inside a hidden track's box or clearly belongs to a kept track. Step 6 should only add a new policy.
+- `decide.py`: a `CoveragePolicy` gives each track a `Decision`; `HideEveryone` is the default, `KeepListPolicy` reveals kept people (see below). `regions_to_cover` hides every track without an explicit `keep_real=True`, and every raw detection unless it is already inside a hidden track's box or clearly belongs to a kept track. Step 6 should only add a new policy.
 - `render.py`: `Anonymizer` pads each face box, covers it with an ellipse whose fully-opaque core always contains the whole face box, and feathers only outside that core.
 - Lost tracks are covered with a grown box spanning both the slowing prediction and a constant-velocity "kept moving" prediction.
 - Leak checks: `examples/leak_check.py` (uncovered detections must be 0).
+
+## Keep list (who stays real)
+
+- `recognise.py`: SFace faceprints, `QualityGate` (only big, roughly frontal views get faceprints), `KeepList` (cosine similarity, threshold 0.40), `Enrolment`.
+- `KeepListPolicy` rules: every track starts hidden; revealed after 3 of its last 5 checks match the same kept person; hidden after 2 failed checks in a row (1 if another face is close by); a kept track that recovers from lost starts hidden and needs 2 matches in a row; only the best-matching track per kept person is shown; poor-quality views never change status.
+- A kept track that is lost (coasting) stays uncovered, but never exempts a raw detection near it.
 
 ## Known limitations (by design)
 
@@ -57,7 +69,7 @@ uv run ruff format .      # format
 3. Face detection ✅
 4. Tracking ✅
 5. Blur everyone ✅
-6. Keep list with faceprints
+6. Keep list with faceprints ✅
 7. Pose and expressions
 8. 2D avatars
 9. Safety net and delay buffer
@@ -65,3 +77,6 @@ uv run ruff format .      # format
 11. Speed pass
 12. Clean library API
 13. Open-source launch kit
+
+## Communicating with me
+Give me a concise answers. Dont drag it out. Use simple language and deliver your point clearly and efficiently. I genuinely can't be bothered reading all your yapping

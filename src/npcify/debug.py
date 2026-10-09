@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import colorsys
 from collections import deque
+from collections.abc import Mapping
 
 import cv2
 
@@ -82,11 +83,13 @@ def draw_tracks(
     tracks: list[Track],
     trails: TrackTrails | None = None,
     detections: list[Detection] | None = None,
+    notes: Mapping[int, str] | None = None,
 ) -> Frame:
     """Return a copy of the frame with each track in its own colour.
 
     Lost tracks are dashed and show how many frames since they were last seen.
     Raw detections, if given, are drawn as thin grey boxes underneath.
+    `notes` adds a second label line per track ID (e.g. keep/hide status).
     """
     out = frame.copy()
     for det in detections or ():
@@ -104,6 +107,9 @@ def draw_tracks(
             thickness = 2 if t.state is TrackState.CONFIRMED else 1
             cv2.rectangle(out, *_corners(t.box), colour, thickness)
             label = f"#{t.track_id} {t.state.value} {t.confidence:.2f}"
-        put_outlined_text(out, label, (t.box.x, max(12, t.box.y - 6)), colour)
+        top = max(30 if notes else 12, t.box.y - 6)
+        put_outlined_text(out, label, (t.box.x, top), colour)
+        if notes and t.track_id in notes:
+            put_outlined_text(out, notes[t.track_id], (t.box.x, top - 16), colour)
         _landmarks(out, t.landmarks)
     return out

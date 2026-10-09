@@ -69,7 +69,24 @@ class PreviewWindow:
 
     def __init__(self, title: str = "npcify") -> None:
         self.title = title
+        self._clicks: list[tuple[int, int, str]] = []
         cv2.namedWindow(self.title, cv2.WINDOW_AUTOSIZE)
+        cv2.setMouseCallback(self.title, self._on_mouse)
+
+    def _on_mouse(self, event: int, x: int, y: int, flags: int, _param: object) -> None:
+        modifier = flags & (cv2.EVENT_FLAG_SHIFTKEY | cv2.EVENT_FLAG_CTRLKEY)
+        if event == cv2.EVENT_RBUTTONDOWN or (event == cv2.EVENT_LBUTTONDOWN and modifier):
+            self._clicks.append((x, y, "right"))
+        elif event == cv2.EVENT_LBUTTONDOWN:
+            self._clicks.append((x, y, "left"))
+
+    def pop_clicks(self) -> list[tuple[int, int, str]]:
+        """Mouse clicks since the last call, as (x, y, "left" | "right").
+
+        Right-click, shift-click and ctrl-click all count as "right".
+        """
+        clicks, self._clicks = self._clicks, []
+        return clicks
 
     def show(
         self, frame: Frame, overlay_lines: list[str] | None = None, wait_ms: int = 1

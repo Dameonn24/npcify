@@ -56,6 +56,20 @@ Run `uv run python examples/webcam_demo.py`. Use **space** to pause and **n** to
 
 Press **d** to see why something is covered: lost tracks (dashed) should still sit over the face. A frame where a face shows is a bug: note what was happening, and if you can, record a clip and run `examples/leak_check.py` on it.
 
+## Keep list (step 6)
+
+Turn on debug (**d**) to see each face's status (`hide 0.21`, `keep: person 1 0.68`, `enrolling …`).
+
+| # | Scenario | How to test | Good enough looks like |
+|---|----------|-------------|------------------------|
+| 1 | Enrol | Click your face, look at the camera, move your head slightly. | Enrolment finishes and you're uncovered within ~1 s of clicking. |
+| 2 | Leave and return | Walk out of frame, wait 5 s, come back. | Covered when you reappear, uncovered again within ~0.5 s. |
+| 3 | Head turns | Turn side-on and back. | You may blur briefly when found again after being lost; never stay blurred more than ~0.5 s once facing the camera. |
+| 4 | Someone else | A second person (ideally similar-looking) sits in frame and moves around. | Always covered. Their debug score should stay well below the threshold (0.40). |
+| 5 | Swap seats | Two people cross or swap places, one kept. | The other person is never uncovered (a frame or two near the crossing would be a bug to report). |
+| 6 | Remove | Right-click your face, then press **c**. | You're covered again straight away. |
+| 7 | 3–4 people | Several people in frame, one kept. | FPS stays 25+. |
+
 ## Record results
 
 Note the date, the lighting, the settings used (`--det-width`, `--det-threshold`) and which scenarios failed. Failures in 3–7 are inputs to the safety-net work in step 9, where anything uncertain must be blurred rather than shown.

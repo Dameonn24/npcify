@@ -1,11 +1,17 @@
-"""Live webcam (or video file) through the npcify pipeline: every face is hidden.
+"""Live webcam (or video file) through the npcify pipeline.
+
+Every face is hidden except people on the keep list.
 
     uv run python examples/webcam_demo.py
     uv run python examples/webcam_demo.py --video some_clip.mp4
 
+Mouse:
+    left-click a face            keep that person real (look at the camera ~1 s)
+    right/shift/ctrl-click face  hide that person again (remove from keep list)
 Keys:
     q / Esc   quit
-    d         toggle debug boxes and track IDs
+    c         clear the keep list
+    d         toggle debug boxes, track IDs and keep/hide status
     s         cycle anonymisation style
     space     pause / resume
     n         when paused, step forward one frame (to check for leaks)
@@ -22,13 +28,15 @@ import time
 from npcify import Pipeline
 from npcify.capture import CameraError, FrameSource
 from npcify.debug import TrackTrails, draw_tracks
+from npcify.decide import KeepListPolicy
 from npcify.detect import DEFAULT_DET_WIDTH, YuNetDetector
 from npcify.models import ModelDownloadError
 from npcify.output import PreviewWindow, format_overlay_lines
+from npcify.recognise import DEFAULT_MATCH_THRESHOLD, KeepList, SFaceRecognizer
 from npcify.render import STYLES, Anonymizer, Padding
 from npcify.timing import FPSCounter, StageTimer
 from npcify.track import Tracker, TrackerConfig
-from npcify.types import TrackState
+from npcify.types import Track, TrackState
 
 _DEFAULT_PADDING = Padding()
 
@@ -99,6 +107,19 @@ def parse_args() -> argparse.Namespace:
         f"(default: {DEFAULT_DET_WIDTH})",
     )
     p.add_argument(
+        "--match-threshold",
+        type=float,
+        default=DEFAULT_MATCH_THRESHOLD,
+        help="how similar a face must be to a kept person to be revealed; higher is "
+        f"stricter (default: {DEFAULT_MATCH_THRESHOLD})",
+    )
+    p.add_argument("--keep-list", metavar="PATH", help="load a saved keep list (.npz)")
+    p.add_argument(
+        "--save-keep-list",
+        metavar="PATH",
+        help="save the keep list's faceprints (biometric data, no images) to PATH on exit",
+    )
+    p.add_argument(
         "--debug-no-anonymise",
         action="store_true",
         help="DEVELOPMENT ONLY: show faces unhidden. Never stream or record with this.",
@@ -115,6 +136,28 @@ def track_summary(pipeline: Pipeline) -> list[str]:
         f"  {count(TrackState.CONFIRMED)} confirmed, {count(TrackState.TENTATIVE)} tentative, "
         f"{count(TrackState.LOST)} lost",
     ]
+
+
+def track_at(tracks: list[Track], x: int, y: int) -> Track | None:
+    """The smallest track whose (slightly enlarged) box contains the point."""
+    hits = []
+    for t in tracks:
+        b = t.box
+        mx, my = 0.2 * b.width, 0.2 * b.height
+        if b.x - mx <= x <= b.x + b.width + mx and b.y - my <= y <= b.y + b.height + my:
+            hits.append((b.width * b.height, t))
+    return min(hits, key=lambda h: h[0])[1] if hits else None
+
+
+def keep_summary(policy: KeepListPolicy) -> list[str]:
+    lines = []
+    if len(policy.keep_list):
+        lines.append("Keeping: " + ", ".join(policy.keep_list.labels))
+    e = policy.enrolment
+    if e is not None:
+        hint = policy.enrolment_hint or "face the camera, move your head a little"
+        lines.append(f"Enrolling {e.label}: {len(e.faceprints)}/{e.target} ({hint})")
+    return lines
 
 
 def main() -> int:
@@ -142,12 +185,28 @@ def main() -> int:
         max_age=args.max_age,
         recover_distance=args.recover_distance,
     )
+    if args.save_keep_list:
+        print(
+            f"WARNING: on exit, the faceprints of everyone on the keep list will be saved to "
+            f"{args.save_keep_list}. Faceprints are biometric data: keep that file private.",
+            file=sys.stderr,
+        )
     try:
         # The detector runs at the low threshold so weak detections are covered too.
         detector = YuNetDetector(score_threshold=config.low_threshold, det_width=args.det_width)
+        recogniser = SFaceRecognizer()
     except ModelDownloadError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+    if args.keep_list:
+        try:
+            keep_list = KeepList.load(args.keep_list, threshold=args.match_threshold)
+        except (OSError, KeyError, ValueError) as e:
+            print(f"Error: could not load keep list {args.keep_list}: {e}", file=sys.stderr)
+            return 1
+        print(f"Loaded keep list: {', '.join(keep_list.labels) or '(empty)'}")
+    else:
+        keep_list = KeepList(threshold=args.match_threshold)
 
     try:
         source = FrameSource(source_arg, args.width, args.height, mirror=mirror)
@@ -159,9 +218,11 @@ def main() -> int:
     style = args.style
     fps = FPSCounter()
     timer = StageTimer()
+    policy = KeepListPolicy(recogniser, keep_list, timer=timer)
     pipeline = Pipeline(
         detector=detector,
         tracker=Tracker(config),
+        policy=policy,
         anonymizer=Anonymizer(style=style, padding=padding),
         timer=timer,
         detect_every=max(1, args.detect_every),
@@ -175,7 +236,8 @@ def main() -> int:
         print(f"Requested {args.width}x{args.height}, camera gave {w}x{h}.")
     else:
         print(f"Resolution: {w}x{h}")
-    print("Keys: q quit, d debug boxes, s style, space pause, n next frame (when paused)")
+    print("Click a face to keep it real; right/shift-click to hide it again.")
+    print("Keys: q quit, c clear keep list, d debug, s style, space pause, n next frame")
 
     # Play video files at their native speed rather than as fast as possible.
     frame_period = 1.0 / source.source_fps if not source.is_camera and source.source_fps else 0.0
@@ -206,11 +268,16 @@ def main() -> int:
             with timer.stage("display"):
                 shown = output
                 if show_debug:
-                    shown = draw_tracks(shown, pipeline.tracks, trails, pipeline.detections)
+                    notes = {t.track_id: policy.status_text(t.track_id) for t in pipeline.tracks}
+                    shown = draw_tracks(shown, pipeline.tracks, trails, pipeline.detections, notes)
                 lines = None
                 if not args.no_overlay:
                     res = (shown.shape[1], shown.shape[0])
-                    extra = [*track_summary(pipeline), f"style: {style}  (s to change)"]
+                    extra = [
+                        *track_summary(pipeline),
+                        f"style: {style}  (s to change)",
+                        *keep_summary(policy),
+                    ]
                     if paused:
                         extra.append("PAUSED  (space resume, n next frame)")
                     if args.debug_no_anonymise:
@@ -220,9 +287,28 @@ def main() -> int:
                     )
                 key = window.show(shown, lines, wait_ms=30 if paused else 1)
 
+            for x, y, button in window.pop_clicks():
+                clicked = track_at(pipeline.tracks, x, y)
+                if clicked is None:
+                    continue
+                if button == "left":
+                    status = policy.statuses.get(clicked.track_id)
+                    if status is not None and status.keep:
+                        print(f"Already keeping {status.kept_as}.")
+                    else:
+                        label = policy.enrol(clicked.track_id)
+                        print(f"Enrolling {label} (track #{clicked.track_id})...")
+                else:
+                    label = policy.forget_track_person(clicked.track_id)
+                    if label:
+                        print(f"Removed {label} from the keep list.")
+
             if key == "quit":
                 break
-            if key == "d":
+            if key == "c":
+                policy.clear()
+                print("Keep list cleared.")
+            elif key == "d":
                 show_debug = not show_debug
             elif key == "s":
                 style = STYLES[(STYLES.index(style) + 1) % len(STYLES)]
@@ -248,6 +334,13 @@ def main() -> int:
         source.release()
         if window is not None:
             window.close()
+        if args.save_keep_list:
+            keep_list.save(args.save_keep_list)
+            print(
+                f"Saved faceprints for {len(keep_list)} kept people to {args.save_keep_list} "
+                "(biometric data; no images).",
+                file=sys.stderr,
+            )
 
     return 0
 

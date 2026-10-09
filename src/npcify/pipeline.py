@@ -1,8 +1,9 @@
 """Run every stage in order for each frame.
 
 capture -> detect -> track -> decide -> pose -> render -> safety -> output.
-Stages are wired in as they are built. So far: detect, track, decide, and
-anonymise (every face that isn't explicitly kept real is hidden).
+Stages are wired in as they are built. So far: detect, track, decide (with
+recognition when a KeepListPolicy is used), and anonymise (every face that
+isn't explicitly kept real is hidden).
 
 Detection, tracking and covering all happen on the same frame inside
 process_frame, before it is returned, so a face is never shown uncovered while
@@ -57,6 +58,8 @@ class Pipeline:
         self.policy = policy if policy is not None else HideEveryone()
         self.anonymizer = anonymizer if anonymizer is not None else Anonymizer()
         self.timer = timer if timer is not None else StageTimer()
+        if getattr(self.policy, "timer", False) is None:
+            self.policy.timer = self.timer  # type: ignore[attr-defined]  # share "recognise" timings
         self.detect_every = detect_every
         self.debug_no_anonymise = debug_no_anonymise
         if debug_no_anonymise:

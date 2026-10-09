@@ -18,11 +18,14 @@ uv run python -c "import npcify"
 
 ## Running the demo
 
-Shows your webcam through the npcify pipeline with **every face hidden**, including yours (choosing who stays real comes in a later step).
+Shows your webcam through the npcify pipeline with **every face hidden** except people you choose to keep.
+
+**Keep yourself real:** click your face and look at the camera for about a second (moving your head a little). The overlay shows enrolment progress, then "Keeping: person 1". Right-click (or shift/ctrl-click) a kept face to hide that person again.
 
 | Key | Action |
 |-----|--------|
 | q / Esc | quit |
+| c | clear the keep list |
 | d | show/hide debug boxes and track IDs |
 | s | cycle style: pixelate-blur, pixelate, blur, solid |
 | space | pause / resume |
@@ -36,12 +39,16 @@ uv run python examples/webcam_demo.py --video some_clip.mp4 # play a video file 
 uv run python examples/webcam_demo.py --help                # all options
 ```
 
-Options: `--camera N`, `--video PATH`, `--width W`, `--height H`, `--no-mirror`, `--no-overlay`, `--style S`, `--padding W H`, `--debug`, `--det-threshold T`, `--low-threshold T`, `--det-width W`, `--max-age N`, `--recover-distance D`, `--detect-every N`.
+Options: `--camera N`, `--video PATH`, `--width W`, `--height H`, `--no-mirror`, `--no-overlay`, `--style S`, `--padding W H`, `--debug`, `--match-threshold T`, `--keep-list PATH`, `--save-keep-list PATH`, `--det-threshold T`, `--low-threshold T`, `--det-width W`, `--max-age N`, `--recover-distance D`, `--detect-every N`.
 
 With debug boxes on (**d**), each tracked face gets a stable ID and its own colour, with a short trail showing where it has been. Labels show the ID, state and confidence: *tentative* (just appeared), *confirmed*, or *lost* (dashed box; the detector missed it, so its position is predicted and the box grows). Thin grey boxes are the raw detections. The dots mark the eyes, nose and mouth corners.
 
+The keep list lives in memory and is forgotten when you quit. To reuse it, save it with `--save-keep-list me.npz` and load it next time with `--keep-list me.npz`. The file holds faceprints (biometric data, but no images): keep it private.
+
 Tuning:
 
+- You stay covered too often or take long to be recognised: lower `--match-threshold` (e.g. `0.35`).
+- Someone else gets revealed as you: raise `--match-threshold` (e.g. `0.5`).
 - Far-away faces missed: `--det-width 1280` (slower, finds smaller faces; default 960).
 - Faces you can clearly see not picked up: lower `--det-threshold` (e.g. `0.5`).
 - IDs change when someone is hidden for longer (default keeps a face for 3 s): raise `--max-age` (e.g. `150`, about 5 s).
@@ -51,7 +58,7 @@ Tuning:
 
 ### Models
 
-The face detector model (YuNet, from [OpenCV Zoo](https://github.com/opencv/opencv_zoo), MIT licence) is downloaded automatically the first time you run the demo, into `~/.cache/npcify/models/`, and checked against a known checksum. To download it in advance (e.g. before going offline):
+The face detector (YuNet, MIT licence) and face recogniser (SFace, Apache 2.0 licence), both from [OpenCV Zoo](https://github.com/opencv/opencv_zoo), are downloaded automatically the first time you run the demo, into `~/.cache/npcify/models/`, and checked against a known checksum. To download it in advance (e.g. before going offline):
 
 ```bash
 uv run npcify-download-models
