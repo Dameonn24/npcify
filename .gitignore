@@ -22,6 +22,9 @@ htmlcov/
 *.mkv
 outputs/
 
+# Local-only test images (may contain real faces; never commit)
+tests/assets/local/
+
 # OS / editors
 .DS_Store
 .vscode/

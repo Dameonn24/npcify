@@ -20,12 +20,15 @@ def format_overlay_lines(
     frame_ms: float,
     resolution: tuple[int, int],
     stage_ms: dict[str, float] | None = None,
+    faces: int | None = None,
 ) -> list[str]:
     """Build the text lines shown in the preview overlay."""
     lines = [
         f"{fps:5.1f} FPS  ({frame_ms:.1f} ms/frame)",
         f"{resolution[0]}x{resolution[1]}",
     ]
+    if faces is not None:
+        lines.append(f"faces: {faces}")
     for name, ms in (stage_ms or {}).items():
         lines.append(f"{name}: {ms:.1f} ms")
     return lines

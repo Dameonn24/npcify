@@ -9,6 +9,9 @@ dependencies = [
     "opencv-python",
 ]
 
+[project.scripts]
+npcify-download-models = "npcify.models:main"
+
 [dependency-groups]
 dev = [
     "pytest",

@@ -26,7 +26,29 @@ uv run python examples/webcam_demo.py --video some_clip.mp4 # play a video file 
 uv run python examples/webcam_demo.py --help                # all options
 ```
 
-Options: `--camera N`, `--video PATH`, `--width W`, `--height H`, `--no-mirror`, `--no-overlay`.
+Options: `--camera N`, `--video PATH`, `--width W`, `--height H`, `--no-mirror`, `--no-overlay`, `--no-show-detections`, `--det-threshold T`, `--det-width W`.
+
+Green boxes show detected faces with their confidence score; the dots mark the eyes, nose and mouth corners. If faces far from the camera are missed, try `--det-width 960` (slower, finds smaller faces). If it misses faces you can clearly see, lower `--det-threshold` (e.g. `0.5`).
+
+### Models
+
+The face detector model (YuNet, from [OpenCV Zoo](https://github.com/opencv/opencv_zoo), MIT licence) is downloaded automatically the first time you run the demo, into `~/.cache/npcify/models/`, and checked against a known checksum. To download it in advance (e.g. before going offline):
+
+```bash
+uv run npcify-download-models
+```
+
+Only model files are downloaded. Video frames never leave your machine.
+
+### Benchmark
+
+```bash
+uv run python examples/benchmark_detect.py some_clip.mp4 [--det-width 960]
+```
+
+Prints the average detection time, the FPS that implies, and the average number of faces per frame.
+
+Manual test checklist: [docs/testing.md](docs/testing.md).
 
 The first time you run it on macOS you'll be asked for camera access. If the camera won't open, go to **System Settings > Privacy & Security > Camera** and allow the app you ran it from (Terminal, iTerm or VS Code), then restart that app.
 

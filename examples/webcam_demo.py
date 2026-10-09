@@ -14,6 +14,9 @@ import time
 
 from npcify import Pipeline
 from npcify.capture import CameraError, FrameSource
+from npcify.debug import draw_detections
+from npcify.detect import YuNetDetector
+from npcify.models import ModelDownloadError
 from npcify.output import PreviewWindow, format_overlay_lines
 from npcify.timing import FPSCounter, StageTimer
 
@@ -26,6 +29,21 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--height", type=int, default=720, help="requested height (default: 720)")
     p.add_argument("--no-mirror", action="store_true", help="don't flip the webcam image")
     p.add_argument("--no-overlay", action="store_true", help="hide the FPS overlay")
+    p.add_argument(
+        "--show-detections",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="draw face boxes, scores and landmarks (default: on)",
+    )
+    p.add_argument(
+        "--det-threshold", type=float, default=0.6, help="face confidence threshold (default: 0.6)"
+    )
+    p.add_argument(
+        "--det-width",
+        type=int,
+        default=640,
+        help="width detection runs at; larger finds smaller faces but is slower (default: 640)",
+    )
     return p.parse_args()
 
 
@@ -35,14 +53,20 @@ def main() -> int:
     mirror = False if args.no_mirror else None  # None = default for the source type
 
     try:
+        detector = YuNetDetector(score_threshold=args.det_threshold, det_width=args.det_width)
+    except ModelDownloadError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    try:
         source = FrameSource(source_arg, args.width, args.height, mirror=mirror)
     except (CameraError, FileNotFoundError, ValueError) as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    pipeline = Pipeline()
     fps = FPSCounter()
     timer = StageTimer()
+    pipeline = Pipeline(detector=detector, timer=timer)
     window: PreviewWindow | None = None
 
     w, h = source.resolution
@@ -69,10 +93,14 @@ def main() -> int:
                 frame = pipeline.process_frame(frame)
 
             with timer.stage("display"):
+                if args.show_detections:
+                    frame = draw_detections(frame, pipeline.detections)
                 lines = None
                 if not args.no_overlay:
                     res = (frame.shape[1], frame.shape[0])
-                    lines = format_overlay_lines(fps.fps, fps.frame_ms, res, timer.averages())
+                    lines = format_overlay_lines(
+                        fps.fps, fps.frame_ms, res, timer.averages(), len(pipeline.detections)
+                    )
                 quit_requested = window.show(frame, lines)
             fps.tick()
             if quit_requested:

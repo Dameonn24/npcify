@@ -14,6 +14,9 @@ from numpy.typing import NDArray
 # A single video frame: height x width x 3 (BGR, as OpenCV delivers it), uint8.
 Frame = NDArray[np.uint8]
 
+# An (x, y) position in full-frame pixel coordinates.
+Point = tuple[float, float]
+
 
 @dataclass(frozen=True)
 class BoundingBox:
@@ -27,10 +30,18 @@ class BoundingBox:
 
 @dataclass(frozen=True)
 class Detection:
-    """One face found in one frame, before we know who it belongs to."""
+    """One face found in one frame, before we know who it belongs to.
+
+    `landmarks`, when the detector provides them, are five (x, y) points in
+    full-frame pixels, in YuNet's order: right eye, left eye, nose tip, right
+    mouth corner, left mouth corner ("right"/"left" from the person's point of
+    view). They are not clipped, so they may fall outside a face cut off by
+    the frame edge.
+    """
 
     box: BoundingBox
     confidence: float
+    landmarks: tuple[Point, ...] | None = None
 
 
 @dataclass

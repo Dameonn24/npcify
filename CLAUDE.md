@@ -19,6 +19,10 @@ Apple Silicon Macs first (developed on a MacBook Air M5, no NVIDIA GPU). Prefer 
 - Type hints everywhere. Shared data shapes live in `src/npcify/types.py`.
 - Every module has a test in `tests/`.
 - Use ruff for linting and formatting: `uv run ruff check .` and `uv run ruff format .`.
+- Development-only visuals (boxes, landmarks) live in `debug.py`, never in the real output path.
+- Model weights are never committed. Register them in `src/npcify/models.py` with a URL and SHA-256; they download to `~/.cache/npcify/models/` on first use.
+- Never commit photos or videos of real people. Local test images go in `tests/assets/local/` (git-ignored); tests that need them must skip when absent.
+- Manual test checklist: `docs/testing.md`.
 - Python 3.11, managed with uv. Add dependencies with `uv add <pkg>` (or `uv add --dev <pkg>`), only when a step needs them.
 
 ## Commands
@@ -33,8 +37,8 @@ uv run ruff format .      # format
 ## Build plan
 
 1. Setup (project skeleton, tooling, tests) ✅
-2. Webcam in/out with FPS counter
-3. Face detection
+2. Webcam in/out with FPS counter ✅
+3. Face detection ✅
 4. Tracking
 5. Blur everyone
 6. Keep list with faceprints
