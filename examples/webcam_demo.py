@@ -53,7 +53,7 @@ def parse_args() -> argparse.Namespace:
         "--max-age",
         type=int,
         default=TrackerConfig.max_age,
-        help=f"frames to keep a face the detector lost (default: {TrackerConfig.max_age}, ~2 s)",
+        help=f"frames to keep a face the detector lost (default: {TrackerConfig.max_age}, ~3 s at 30 FPS)",
     )
     p.add_argument(
         "--recover-distance",

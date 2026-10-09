@@ -32,10 +32,10 @@ Watch the `#N` label on each face and the confirmed / tentative / lost counts in
 | # | Scenario | How to test | Good enough looks like |
 |---|----------|-------------|------------------------|
 | 1 | Moving around | Lean, sway, and move around the frame for 30 s. | One ID the whole time. `tentative` only for the first ~3 frames. |
-| 2 | Head turn / spin | Turn to full profile and back, then spin all the way round on your chair (under 2 s). | Same ID after turning back. A dashed *lost* box while you're side-on is fine; it should stay over your head. |
-| 3 | Hands over face | Cover your face with both hands for 1–2 s, then remove them. | Same ID. Dashed box stays over the face while covered. |
+| 2 | Head turn / spin | Turn to full profile and back, then spin all the way round on your chair (under 3 s). | Same ID after turning back. A dashed *lost* box while you're side-on is fine; it should stay over your head. |
+| 3 | Hands over face | Cover your face with both hands for 2–3 s, then remove them. | Same ID. Dashed box stays over the face while covered. |
 | 4 | Two people crossing | Two people walk past each other, one in front of the other. | Each keeps their own ID most of the time. An occasional swap when both faces fully overlap is acceptable. |
-| 5 | Leave and return | Walk out of frame, wait 3 s, come back. | New ID on return (expected; recognising people is step 6). If you walk out past the frame edge the old box disappears within a few frames. If you leave without crossing the edge (e.g. duck below the desk), it stays for up to 2 s; that's deliberate. |
+| 5 | Leave and return | Walk out of frame, wait 3 s, come back. | New ID on return (expected; recognising people is step 6). If you walk out past the frame edge the old box disappears within a few frames. If you leave without crossing the edge (e.g. duck below the desk), it stays for up to 3 s; that's deliberate. |
 | 6 | False positives | Point the camera at a busy scene with no people. | Any brief false box stays *tentative* and vanishes; never *confirmed*. |
 
 For a recorded clip, `uv run python examples/track_report.py clip.mp4` should show about one confirmed ID per person.

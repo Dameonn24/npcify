@@ -34,7 +34,7 @@ Tuning:
 
 - Far-away faces missed: `--det-width 960` (slower, finds smaller faces).
 - Faces you can clearly see not picked up: lower `--det-threshold` (e.g. `0.5`).
-- IDs change when someone is hidden for longer (default keeps a face for 2 s): raise `--max-age` (e.g. `90`, about 3 s).
+- IDs change when someone is hidden for longer (default keeps a face for 3 s): raise `--max-age` (e.g. `150`, about 5 s).
 - IDs change when someone moves a lot while hidden (e.g. comes back from a spin further away): raise `--recover-distance` (e.g. `2.5`).
 - A different person who appears where someone vanished takes over their ID: lower `--recover-distance` (e.g. `1.0`).
 - Boxes linger in empty space after someone leaves (without walking out of frame): lower `--max-age`.

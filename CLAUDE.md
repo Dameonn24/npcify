@@ -12,7 +12,7 @@ npcify is an open-source Python library that takes a live camera feed or a video
 
 ## Known limitations (by design)
 
-- A person who leaves and comes back much later (after `max_age` frames, ~2 s) gets a new track ID. Recognising returning people is step 6 (keep list with faceprints).
+- A person who leaves and comes back much later (after `max_age` frames, ~3 s) gets a new track ID. Recognising returning people is step 6 (keep list with faceprints).
 - The reverse can also happen: a lost track can be recovered by a *different* person who appears near where it vanished (within `recover_distance` face-widths), so they inherit its ID. A track ID is therefore never proof of identity. Step 6 must re-verify "keep real" with the faceprint after any recovery (lost → confirmed), and never let a bystander inherit the creator's keep-real status through a track ID.
 
 ## Target hardware

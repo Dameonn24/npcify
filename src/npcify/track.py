@@ -53,7 +53,7 @@ class TrackerConfig:
     low_match_iou: stricter overlap needed for a low-confidence rescue match.
     min_hits: consecutive matches needed to confirm a new track.
     max_age: frames a lost track is kept (and its position predicted) before
-        removal. 60 frames is about 2 seconds at 30 FPS: long enough to cover
+        removal. 90 frames is about 3 seconds at 30 FPS: long enough to cover
         your face with your hands or turn round on a chair.
     lost_velocity_decay: a lost track's speed is multiplied by this each missed
         frame, so its prediction settles near where the face was last seen
