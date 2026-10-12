@@ -2,7 +2,27 @@
 
 Turn the bystanders in your camera feed into cartoon avatars, live and on-device, while the people you choose stay looking like themselves.
 
-> **Early development.** Nothing works yet; the project is being set up. Expect breaking changes.
+> **Early development.** The webcam demo works end to end: every face is hidden, people you choose stay real, and hidden people get cartoon avatars that follow their head and expressions. There is no virtual camera, video file output or stable library API yet. Expect breaking changes.
+
+## Status
+
+| Step | | |
+|------|--|--|
+| 1 | Project setup | ✅ |
+| 2 | Webcam in/out with FPS counter | ✅ |
+| 3 | Face detection (YuNet) | ✅ |
+| 4 | Tracking with stable IDs | ✅ |
+| 5 | Hide every face (blur / pixelate) | ✅ |
+| 6 | Keep list: chosen people stay real (SFace faceprints) | ✅ |
+| 7 | Head pose and expressions (MediaPipe Face Landmarker) | ✅ |
+| 8 | 2D cartoon avatars | ✅ |
+| 9 | Safety net and delay buffer | next |
+| 10 | Virtual camera and video file output | |
+| 11 | Speed pass (target ~30 FPS) | |
+| 12 | Clean library API | |
+| 13 | Open-source launch kit | |
+
+Developed and tested on Apple Silicon Macs. Other platforms come later.
 
 ## Quick start
 
